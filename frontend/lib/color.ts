@@ -1,0 +1,3 @@
+export const SWATCHES = [{ name: "White", hex: "#F5F3EC" }, { name: "Warm White", hex: "#E9E0CE" }, { name: "Cream", hex: "#E5D2A8" }, { name: "Beige", hex: "#CBB99B" }, { name: "Gray", hex: "#A7A49C" }, { name: "Charcoal", hex: "#3D4240" }, { name: "Light Blue", hex: "#A8C7D9" }, { name: "Navy", hex: "#29445F" }, { name: "Sage Green", hex: "#99A88D" }, { name: "Forest Green", hex: "#345447" }, { name: "Terracotta", hex: "#B7654A" }, { name: "Blush", hex: "#D9A6A2" }];
+export const isHex = (value: string) => /^#[0-9A-F]{6}$/i.test(value);
+export const hexRgb = (hex: string) => [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)] as const;

@@ -1,0 +1,32 @@
+.DS_Store
+node_modules/
+.next/
+coverage/
+__pycache__/
+*.py[cod]
+.venv/
+.env
+*.log
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Frontend
+node_modules/
+.next/
+out/
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# IDE / OS
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
