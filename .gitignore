@@ -11,11 +11,14 @@ __pycache__/
 .env
 .env.*
 !.env.example
+backend/.env
+frontend/.env.local
 
 # Frontend
 node_modules/
 .next/
 out/
+*.tsbuildinfo
 
 # Python
 venv/
