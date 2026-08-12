@@ -1,5 +1,4 @@
 import numpy as np
-import cv2
 from PIL import Image
 
 
@@ -35,6 +34,8 @@ class RoomSegmentationService:
     @staticmethod
     def clean_wall_mask(wall: np.ndarray, protected: np.ndarray) -> np.ndarray:
         """Fill only tiny interior gaps, then enforce architectural/object protection."""
+        import cv2
+
         kernel = np.ones((3, 3), np.uint8)
         closed = cv2.morphologyEx(wall.astype(np.uint8), cv2.MORPH_CLOSE, kernel).astype(bool)
         return closed & ~protected
