@@ -8,13 +8,17 @@ https://github.com/surisir/wallwise.git
 
 ## Backend on Railway
 
-Create a new Railway service from GitHub and set the root directory to:
+Create a new Railway service from GitHub.
+
+Recommended root directory:
 
 ```text
 backend
 ```
 
 Railway should use `backend/railway.json`, build with the backend Dockerfile, and expose `/health`.
+
+If Railway was already created from the repository root, that also works now. The root `railway.json` uses `Dockerfile.railway` and builds only the backend service.
 
 Set these Railway environment variables:
 
