@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     yolo_model: str = "yolo11n.pt"
     minimum_wall_area: int = 2000
     wall_confidence_threshold: float = 0.35
+    analysis_timeout_seconds: int = 22
     enable_object_detection: bool = False
     image_provider: str = "gemini"
     gemini_api_key: str | None = None

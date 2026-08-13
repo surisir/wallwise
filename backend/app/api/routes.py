@@ -4,6 +4,7 @@ import logging
 import re
 import time
 
+import numpy as np
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
 
 from app.core.config import Settings, get_settings
@@ -31,6 +32,28 @@ _objects = ObjectDetectionService(
 )
 
 
+def _fallback_room_masks(width: int, height: int) -> tuple[dict[str, np.ndarray], float]:
+    """Return a conservative editable wall area when CPU segmentation times out."""
+    wall = np.zeros((height, width), dtype=bool)
+    ceiling = np.zeros_like(wall)
+    floor = np.zeros_like(wall)
+    empty = np.zeros_like(wall)
+
+    ceiling_bottom = max(1, int(height * 0.12))
+    floor_top = min(height, int(height * 0.74))
+    wall[ceiling_bottom:floor_top, :] = True
+    ceiling[:ceiling_bottom, :] = True
+    floor[floor_top:, :] = True
+
+    return {
+        "wall": wall,
+        "floor": floor,
+        "ceiling": ceiling,
+        "window": empty.copy(),
+        "door": empty.copy(),
+    }, 0.35
+
+
 @router.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -43,6 +66,7 @@ def diagnostics(settings: Settings = Depends(get_settings)) -> dict[str, object]
         "segmentation_model": settings.segmentation_model,
         "enable_object_detection": settings.enable_object_detection,
         "max_upload_bytes": settings.max_upload_bytes,
+        "analysis_timeout_seconds": settings.analysis_timeout_seconds,
         "image_provider": settings.image_provider,
     }
 
@@ -110,7 +134,10 @@ async def analyze(
 
         segmentation_start = time.perf_counter()
 
-        masks, confidence = _segmentation.segment(uploaded.image)
+        masks, confidence = await asyncio.wait_for(
+            asyncio.to_thread(_segmentation.segment, uploaded.image),
+            timeout=settings.analysis_timeout_seconds,
+        )
 
         segmentation_seconds = time.perf_counter() - segmentation_start
 
@@ -127,6 +154,20 @@ async def analyze(
                 "ANALYZE: segmentation debug=%s",
                 _segmentation.last_debug,
             )
+
+    except asyncio.TimeoutError:
+        logger.warning(
+            "ANALYZE: segmentation timeout "
+            "timeout=%ss filename=%s analysis_size=%sx%s action=fallback",
+            settings.analysis_timeout_seconds,
+            uploaded.filename,
+            uploaded.image.width,
+            uploaded.image.height,
+        )
+        masks, confidence = _fallback_room_masks(
+            uploaded.image.width,
+            uploaded.image.height,
+        )
 
     except Exception as exc:
         logger.exception(
