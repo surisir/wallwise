@@ -6,12 +6,13 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
     max_upload_bytes: int = 10 * 1024 * 1024
     allowed_origins: str = "http://localhost:3000"
-    # Better boundary quality than the B0 model, at the cost of slower CPU inference.
-    segmentation_model: str = "nvidia/segformer-b5-finetuned-ade-640-640"
+    # Keep the deployed MVP responsive on small CPU containers. Override with
+    # a larger SegFormer model in production only when the host has enough RAM.
+    segmentation_model: str = "nvidia/segformer-b0-finetuned-ade-512-512"
     yolo_model: str = "yolo11n.pt"
     minimum_wall_area: int = 2000
     wall_confidence_threshold: float = 0.35
-    enable_object_detection: bool = True
+    enable_object_detection: bool = False
     image_provider: str = "gemini"
     gemini_api_key: str | None = None
     gemini_image_model: str = "gemini-3.1-flash-image"

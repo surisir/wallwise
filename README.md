@@ -55,9 +55,9 @@ Local development CORS is explicitly limited by `ALLOWED_ORIGINS` (default `http
 
 ## Model downloads
 
-The application lazily initializes models on the first `/analyze` request and reuses them for later requests. The default `nvidia/segformer-b5-finetuned-ade-640-640` trades a larger first download and slower CPU inference for better indoor-wall boundaries; the YOLO nano checkpoint is roughly 5–10 MB. Framework dependencies, especially PyTorch, are much larger and platform-dependent. Downloads are stored in the normal Hugging Face/Ultralytics caches, not in uploaded-image storage.
+The application lazily initializes models on the first `/analyze` request and reuses them for later requests. The default `nvidia/segformer-b0-finetuned-ade-512-512` keeps small CPU containers responsive. You can override `SEGMENTATION_MODEL` with a larger model such as `nvidia/segformer-b5-finetuned-ade-640-640` when the host has enough RAM and startup time. YOLO object detection is disabled by default for production responsiveness; set `ENABLE_OBJECT_DETECTION=true` when the host can comfortably load it. Framework dependencies, especially PyTorch, are much larger and platform-dependent. Downloads are stored in the normal Hugging Face/Ultralytics caches, not in uploaded-image storage.
 
-If a first analysis fails, verify internet access, PyTorch installation, and the model names in `backend/.env`. Set `ENABLE_OBJECT_DETECTION=false` to keep the core wall workflow running while diagnosing YOLO.
+If a first analysis fails, verify internet access, PyTorch installation, host memory, and the model names in `backend/.env`. Keep `ENABLE_OBJECT_DETECTION=false` to keep the core wall workflow running while diagnosing YOLO.
 
 ## Gemini image-editing setup
 
