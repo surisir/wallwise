@@ -89,7 +89,7 @@ export function ImageEditor({ originalSource, originalFile, analysis, onStartOve
         rendered.data[i + 2] = rendered.data[i + 2] * (1 - paintAlpha) + paint[2] * paintAlpha;
       }
     });
-    const highlightedWalls = hoverWall ? [hoverWall] : (displayMode === "local-preview" || tool !== "select" ? selectedWalls : []);
+    const highlightedWalls = hoverWall ? [hoverWall] : (tool !== "select" ? selectedWalls : []);
     Array.from(new Set(highlightedWalls)).forEach(id => {
       const mask = masks.current[id!];
       if (!mask) return;

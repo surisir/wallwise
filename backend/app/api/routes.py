@@ -32,8 +32,15 @@ _objects = ObjectDetectionService(
 )
 
 
-def _fallback_room_masks(width: int, height: int) -> tuple[dict[str, np.ndarray], float]:
-    """Return a conservative editable wall area when CPU segmentation times out."""
+def _fallback_room_masks(image) -> tuple[dict[str, np.ndarray], float]:
+    """Return a conservative editable wall estimate when CPU segmentation times out.
+
+    This path is deliberately lightweight. It samples side-wall pixels in the
+    expected wall band and keeps pixels with similar color/luminance, so the
+    instant preview does not paint a giant rectangle over foreground objects.
+    AI visualization still receives the original image and remains provider-led.
+    """
+    width, height = image.size
     wall = np.zeros((height, width), dtype=bool)
     ceiling = np.zeros_like(wall)
     floor = np.zeros_like(wall)
@@ -41,9 +48,57 @@ def _fallback_room_masks(width: int, height: int) -> tuple[dict[str, np.ndarray]
 
     ceiling_bottom = max(1, int(height * 0.12))
     floor_top = min(height, int(height * 0.74))
-    wall[ceiling_bottom:floor_top, :] = True
     ceiling[:ceiling_bottom, :] = True
     floor[floor_top:, :] = True
+
+    pixels = np.asarray(image.convert("RGB"), dtype=np.int16)
+    candidate_band = np.zeros_like(wall)
+    candidate_band[ceiling_bottom:floor_top, :] = True
+
+    # Walls are usually visible near one or both side edges. Sampling there
+    # avoids foreground-heavy centers such as cabinets, beds, racks, and boxes.
+    strip_width = max(8, int(width * 0.08))
+    side_samples = np.concatenate(
+        [
+            pixels[ceiling_bottom:floor_top, :strip_width].reshape(-1, 3),
+            pixels[ceiling_bottom:floor_top, width - strip_width :].reshape(-1, 3),
+        ],
+        axis=0,
+    )
+    if side_samples.size:
+        luminance_samples = (
+            0.2126 * side_samples[:, 0]
+            + 0.7152 * side_samples[:, 1]
+            + 0.0722 * side_samples[:, 2]
+        )
+        low, high = np.percentile(luminance_samples, [20, 95])
+        likely_wall_samples = side_samples[
+            (luminance_samples >= low)
+            & (luminance_samples <= high)
+        ]
+        reference = np.median(
+            likely_wall_samples if len(likely_wall_samples) else side_samples,
+            axis=0,
+        )
+        diff = np.linalg.norm(pixels - reference, axis=2)
+        luminance = (
+            0.2126 * pixels[:, :, 0]
+            + 0.7152 * pixels[:, :, 1]
+            + 0.0722 * pixels[:, :, 2]
+        )
+        chroma = pixels.max(axis=2) - pixels.min(axis=2)
+        wall = (
+            candidate_band
+            & (diff < 62)
+            & (luminance > 95)
+            & (chroma < 80)
+        )
+
+    if float(wall.mean()) < 0.03:
+        # If the heuristic cannot find enough wall, return no painted mask
+        # instead of a misleading rectangle. The user can still use AI
+        # visualization, which is the reliable path for hard images.
+        wall[:] = False
 
     return {
         "wall": wall,
@@ -164,10 +219,7 @@ async def analyze(
             uploaded.image.width,
             uploaded.image.height,
         )
-        masks, confidence = _fallback_room_masks(
-            uploaded.image.width,
-            uploaded.image.height,
-        )
+        masks, confidence = _fallback_room_masks(uploaded.image)
 
     except Exception as exc:
         logger.exception(
