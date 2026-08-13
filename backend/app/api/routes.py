@@ -354,6 +354,7 @@ async def visualize_wall_color(
     color_rgb: str | None = Form(None),
     ai_only: bool = Form(False),
     selected_area_ids: str | None = Form(None),
+    target_points: str | None = Form(None),
     settings: Settings = Depends(get_settings),
 ) -> Response:
 
@@ -404,6 +405,33 @@ async def visualize_wall_color(
             detail="Selected areas must be a JSON array of IDs.",
         )
 
+    try:
+        selected_points = (
+            json.loads(target_points)
+            if target_points
+            else []
+        )
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="Target points must be a JSON array.",
+        ) from exc
+
+    if (
+        not isinstance(selected_points, list)
+        or not all(
+            isinstance(point, dict)
+            and isinstance(point.get("id"), str)
+            and isinstance(point.get("x"), int)
+            and isinstance(point.get("y"), int)
+            for point in selected_points
+        )
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Target points must be a JSON array of {id, x, y}.",
+        )
+
     # ---------------------------------------------------------
     # 3. Validate uploaded image
     # ---------------------------------------------------------
@@ -421,18 +449,34 @@ async def visualize_wall_color(
     # ---------------------------------------------------------
     if ai_only:
         edit_instruction = (
-            "Identify visible paintable wall or facade surfaces "
-            "yourself. Repaint only those surfaces while preserving "
-            "openings, landscaping, trim, roof, pavement and all objects."
+            "All visible paintable wall surfaces are selected. "
+            "Identify the paintable wall surfaces yourself and repaint "
+            "only those surfaces while preserving openings, landscaping, "
+            "trim, roof, pavement and all objects."
+        )
+    elif selected_areas and selected_points:
+        point_summary = "; ".join(
+            f"{point['id']} at image coordinate ({point['x']}, {point['y']})"
+            for point in selected_points
+        )
+        edit_instruction = (
+            "Repaint only the wall surfaces selected by the user. "
+            "The selected wall targets are identified by natural-image "
+            f"coordinates: {point_summary}. Treat these coordinates as "
+            "guidance for which wall planes to repaint; do not draw or "
+            "leave any markers in the final image. Leave all unselected "
+            "walls unchanged."
         )
     elif selected_areas:
         edit_instruction = (
-            "Apply the requested paint color together across the "
-            "user-selected paintable areas: "
-            f"{', '.join(selected_areas)}."
+            "Repaint only the user-selected wall areas: "
+            f"{', '.join(selected_areas)}. Leave unselected walls unchanged."
         )
     else:
-        edit_instruction = None
+        edit_instruction = (
+            "All visible paintable wall surfaces are selected. Repaint all "
+            "paintable walls and preserve everything else."
+        )
 
     selected_color = SelectedColor(
         color_hex.upper(),

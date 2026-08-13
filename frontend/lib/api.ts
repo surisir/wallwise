@@ -13,7 +13,7 @@ export async function analyzeRoom(file: File): Promise<AnalysisResult> {
   return body as AnalysisResult;
 }
 
-export async function visualizeWallColor(file: File, color: { hex: string; name?: string; aiOnly?: boolean; areaIds?: string[] }): Promise<Blob> {
+export async function visualizeWallColor(file: File, color: { hex: string; name?: string; aiOnly?: boolean; areaIds?: string[]; targetPoints?: { id: string; x: number; y: number }[] }): Promise<Blob> {
   const form = new FormData();
   form.append("image", file);
   form.append("color_hex", color.hex);
@@ -21,6 +21,7 @@ export async function visualizeWallColor(file: File, color: { hex: string; name?
   if (color.name) form.append("color_name", color.name);
   if (color.aiOnly) form.append("ai_only", "true");
   if (color.areaIds?.length) form.append("selected_area_ids", JSON.stringify(color.areaIds));
+  if (color.targetPoints?.length) form.append("target_points", JSON.stringify(color.targetPoints));
   const response = await fetch(`${API_URL}/visualize`, { method: "POST", body: form });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
