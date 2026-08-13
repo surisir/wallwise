@@ -6,8 +6,9 @@ const API_URL = "/api/backend";
 export async function analyzeRoom(file: File): Promise<AnalysisResult> {
   const form = new FormData(); form.append("image", file);
   const response = await fetch(`${API_URL}/analyze`, { method: "POST", body: form });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.detail || "We couldn’t analyze that image. Please try again.");
+  const rawBody = await response.text();
+  const body = rawBody ? safeJson(rawBody) : {};
+  if (!response.ok) throw new Error(body.detail || rawBody || `Image analysis failed with ${response.status} ${response.statusText}.`);
   if (!body.image || !Array.isArray(body.walls) || !Array.isArray(body.objects)) throw new Error("The analysis response was incomplete.");
   return body as AnalysisResult;
 }
@@ -26,4 +27,12 @@ export async function visualizeWallColor(file: File, color: { hex: string; name?
     throw new Error(body.detail || "We couldn’t create your wall-color visualization.");
   }
   return response.blob();
+}
+
+function safeJson(raw: string): Record<string, any> {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
 }

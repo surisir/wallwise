@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 ALLOWED_FORMATS = {"JPEG", "PNG", "WEBP", "HEIF", "HEIC"}
 ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "image/heic", "image/heif", "application/octet-stream", None}
 MAX_DECODED_PIXELS = 100_000_000
-ANALYSIS_MAX_DIMENSION = 2048
+ANALYSIS_MAX_DIMENSION = 1280
 
 
 @dataclass(frozen=True)

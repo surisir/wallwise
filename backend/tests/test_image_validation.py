@@ -47,7 +47,7 @@ def test_exif_orientation_is_applied_before_analysis() -> None:
 
 def test_large_24mp_camera_image_is_downscaled_only_for_analysis() -> None:
     result = asyncio.run(ImageValidationService(10 * 1024 * 1024).read(upload(encoded_image("JPEG", (6000, 4000)), "camera.jpg", "image/jpeg")))
-    assert result.image.size == (2048, 1365)
+    assert result.image.size == (1280, 853)
     assert (result.original_width, result.original_height) == (6000, 4000)
 
 

@@ -36,6 +36,17 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@router.get("/diagnostics")
+def diagnostics(settings: Settings = Depends(get_settings)) -> dict[str, object]:
+    return {
+        "status": "ok",
+        "segmentation_model": settings.segmentation_model,
+        "enable_object_detection": settings.enable_object_detection,
+        "max_upload_bytes": settings.max_upload_bytes,
+        "image_provider": settings.image_provider,
+    }
+
+
 @router.post("/analyze", response_model=AnalysisResponse)
 async def analyze(
     image: UploadFile = File(...),
