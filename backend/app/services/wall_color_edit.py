@@ -42,6 +42,24 @@ class SelectedColor(NamedTuple):
         return "blue"
 
 
+STRICT_REPAINT_ONLY_RULES = """STRICT REPAINT-ONLY RULES:
+- This is a repaint-only edit, not a redesign or image regeneration.
+- Only change the color of visible paintable wall surfaces.
+- Keep every non-wall pixel visually identical except for natural edge preservation.
+- Do not add, remove, move, replace, resize, duplicate, redraw, invent, or reinterpret anything.
+- Do not alter TV screens, screen content, photos, portraits, picture frames, artwork, wall decorations, cables, outlets, switches, plugs, furniture, curtains, trim, doors, windows, glass, ceiling, floor, baseboards, fixtures, plants, reflections, shadows, or object placement.
+- Preserve all existing object boundaries exactly. Paint must stop cleanly behind and around mounted TVs, frames, wires, outlets, chairs, tables, plants, trim, and decorations.
+- If an object overlaps a wall, leave the object unchanged and repaint only the visible wall around it."""
+
+NEGATIVE_REPAINT_ONLY_PROMPT = (
+    "redesign, changed architecture, changed furniture, changed ceiling, painted windows, "
+    "painted trim, painted objects, added objects, removed objects, moved objects, resized objects, "
+    "duplicated objects, redrawn objects, changed TV screen, changed screen content, changed picture, "
+    "changed portrait, changed wall art, added wall art, removed wall art, new decorations, object hallucination, "
+    "changed cables, changed outlets, changed switches, changed furniture, flat color overlay, illustration, CGI"
+)
+
+
 def build_wall_color_prompt(color: SelectedColor) -> str:
     red, green, blue = color.rgb
     fallback = f"\n\nAI FALLBACK INSTRUCTION:\n{color.scene_hint}" if color.scene_hint else ""
@@ -49,6 +67,8 @@ def build_wall_color_prompt(color: SelectedColor) -> str:
 
 Change ONLY paintable wall surfaces to the requested paint color: {color.descriptive_name},
 HEX {color.hex}, RGB ({red}, {green}, {blue}). This is a precise image edit, never a redesign.
+
+{STRICT_REPAINT_ONLY_RULES}
 
 Preserve exactly: furniture, beds, tables, cabinets, plants, artwork, wall decorations,
 windows, glass, window frames, trim, doors, baseboards, crown molding, ceiling, flooring,
@@ -107,7 +127,7 @@ class FalQwenProvider:
                 self.model,
                 arguments={
                     "prompt": build_wall_color_prompt(color),
-                    "negative_prompt": "redesign, changed architecture, changed furniture, changed ceiling, painted windows, painted trim, painted objects, added objects, removed objects, flat color overlay, illustration, CGI",
+                    "negative_prompt": NEGATIVE_REPAINT_ONLY_PROMPT,
                     "image_urls": [uploaded_image_url],
                     "num_images": 1,
                     "num_inference_steps": 28,
@@ -257,22 +277,28 @@ RGB: ({red}, {green}, {blue})
 
 The output must remain the same room.
 
+{STRICT_REPAINT_ONLY_RULES}
+
 Preserve the furniture, bed, windows, window trim, doors, ceiling, flooring,
 plant, artwork, decorations, fixtures and architecture.
 
 Preserve the camera angle, perspective, composition, natural lighting,
 shadows and reflections.
 
-Do not add or remove objects.
-Do not redesign the room.
+Do not add, remove, move, replace, resize, duplicate, or redraw objects.
+Do not redesign the room, wall, decor, furniture, TV screen, picture frames,
+photos, portraits or artwork.
 Do not tint furniture.
 Do not change the ceiling or flooring.
+Do not change TV/video/screen contents, framed photos, wall art, cables,
+electrical outlets, switches, plugs, curtains, trim, baseboards, fixtures,
+chairs, tables, decor, plants, floor, ceiling or reflections.
 
 The selected HEX represents the underlying paint color; preserve realistic
 lighting variations across the painted walls.
 
-The final result should look like the same real room after the walls were
-professionally repainted.{fallback}"""
+The final result must look like the exact same photograph with only the
+paintable wall color changed.{fallback}"""
 
 
 class CloudflareFluxProvider:

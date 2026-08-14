@@ -2,7 +2,7 @@ import base64
 import sys
 import types
 
-from app.services.wall_color_edit import CloudflareFluxProvider, FalQwenProvider, GeminiProvider, SelectedColor, build_wall_color_prompt
+from app.services.wall_color_edit import CloudflareFluxProvider, FalQwenProvider, GeminiProvider, NEGATIVE_REPAINT_ONLY_PROMPT, SelectedColor, build_cloudflare_wall_color_prompt, build_wall_color_prompt
 
 
 def test_wall_color_prompt_includes_exact_color_and_preservation_rules() -> None:
@@ -10,6 +10,26 @@ def test_wall_color_prompt_includes_exact_color_and_preservation_rules() -> None
     assert "HEX #C62828" in prompt
     assert "RGB (198, 40, 40)" in prompt
     assert "Do not paint over foreground objects" in prompt
+    assert "STRICT REPAINT-ONLY RULES" in prompt
+    assert "Do not alter TV screens" in prompt
+    assert "Keep every non-wall pixel visually identical" in prompt
+
+
+def test_cloudflare_prompt_protects_objects_and_screen_content() -> None:
+    prompt = build_cloudflare_wall_color_prompt(SelectedColor("#D5E0D7", "Soft sage"))
+    assert "Only change the color of visible paintable wall surfaces" in prompt
+    assert "Do not change TV/video/screen contents" in prompt
+    assert "framed photos" in prompt
+    assert "cables" in prompt
+    assert "electrical outlets" in prompt
+    assert "exact same photograph" in prompt
+
+
+def test_negative_prompt_blocks_common_hallucinations() -> None:
+    assert "changed TV screen" in NEGATIVE_REPAINT_ONLY_PROMPT
+    assert "changed picture" in NEGATIVE_REPAINT_ONLY_PROMPT
+    assert "added wall art" in NEGATIVE_REPAINT_ONLY_PROMPT
+    assert "object hallucination" in NEGATIVE_REPAINT_ONLY_PROMPT
 
 
 def test_fal_provider_returns_only_the_remote_generated_image(monkeypatch) -> None:
