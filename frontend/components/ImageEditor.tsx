@@ -6,8 +6,9 @@ import { clientToImagePoint } from "@/lib/canvas";
 import { visualizeWallColor } from "@/lib/api";
 import { ColorPanel } from "./ColorPanel";
 import { ColorPickerModal, PickedColor } from "./ColorPickerModal";
+import { ProjectType } from "@/types/project";
 
-type Props = { originalSource: string; originalFile: File; analysis: AnalysisResult; onStartOver: () => void };
+type Props = { originalSource: string; originalFile: File; analysis: AnalysisResult; projectType: ProjectType; onStartOver: () => void };
 type Point = { x: number; y: number };
 type DisplayMode = "original" | "ai-result";
 type SelectedPaint = { hex: string; name?: string; brand?: string; shadeName?: string; code?: string };
@@ -73,7 +74,7 @@ const LIGHTING_PRESETS = [
   { label: "Night / Artificial light", value: 10 },
 ] as const;
 
-export function ImageEditor({ originalSource, originalFile, analysis, onStartOver }: Props) {
+export function ImageEditor({ originalSource, originalFile, analysis, projectType, onStartOver }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const workspaceRef = useRef<HTMLElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
@@ -100,8 +101,9 @@ export function ImageEditor({ originalSource, originalFile, analysis, onStartOve
   const allAreasSelected = areaCount > 0 && selectedWalls.length === areaCount;
   const visibleMarkers = displayMode === "original";
   const lightingLabel = lightingLabelFor(lightingValue);
+  const supportsExteriorLighting = projectType === "exterior";
   const hasLightingPreview = displayMode === "ai-result" && Boolean(editedSource) && lightingValue !== finalizedLightingValue;
-  const canvasFilter = hasLightingPreview ? lightingPreviewFilter(lightingValue) : "none";
+  const canvasFilter = supportsExteriorLighting && hasLightingPreview ? lightingPreviewFilter(lightingValue) : "none";
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -312,7 +314,7 @@ export function ImageEditor({ originalSource, originalFile, analysis, onStartOve
   return <main className="min-h-screen bg-[#f5f6f2] px-3 py-3 text-[#18211d] sm:px-5 md:px-7">
     <header className="mx-auto flex h-14 max-w-[1680px] items-center justify-between">
       <button onClick={onStartOver} className="rounded-lg px-2 py-2 text-sm font-semibold text-[#496252] transition hover:bg-white">← New image</button>
-      <div className="text-center"><p className="m-0 text-[15px] font-bold uppercase tracking-[.2em]">Wallwise</p><p className="mt-0.5 text-[9px] font-semibold tracking-[.16em] text-[#718076]">PAINT VISUALIZER</p></div>
+      <div className="text-center"><p className="m-0 text-[15px] font-bold uppercase tracking-[.2em]">Wallwise</p><p className="mt-0.5 text-[9px] font-semibold tracking-[.16em] text-[#718076]">{projectType === "exterior" ? "EXTERIOR PAINT VISUALIZER" : "INTERIOR PAINT VISUALIZER"}</p></div>
       <div className="w-[92px]" />
     </header>
 
@@ -365,7 +367,7 @@ export function ImageEditor({ originalSource, originalFile, analysis, onStartOve
             <button onClick={() => generateVisualization()} disabled={visualizing || !selectedColor || (areaCount > 0 && selectedWalls.length === 0)} className="h-10 whitespace-nowrap rounded-xl bg-[#18211d] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#2c4034] disabled:cursor-not-allowed disabled:opacity-45">{visualizing ? visualizingText : "Apply"}</button>
           </div>
         </div>
-        {editedSource && <div className="mt-3 rounded-2xl border border-[#dbe3da] bg-[#fafcf9] p-3">
+        {supportsExteriorLighting && editedSource && <div className="mt-3 rounded-2xl border border-[#dbe3da] bg-[#fafcf9] p-3">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
             <div className="flex min-w-0 flex-1 gap-4">
               <div className="flex w-16 shrink-0 flex-col items-center rounded-2xl border border-[#dbe3da] bg-white px-2 py-3">
