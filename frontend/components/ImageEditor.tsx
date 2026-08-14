@@ -66,6 +66,13 @@ function lightingPreviewFilter(value: number) {
   return `brightness(${brightness}) saturate(${saturation}) sepia(${sepia}) contrast(${contrast})`;
 }
 
+const LIGHTING_PRESETS = [
+  { label: "Natural / Same as photo", value: 50 },
+  { label: "Direct Sunlight", value: 95 },
+  { label: "Evening / Warm light", value: 35 },
+  { label: "Night / Artificial light", value: 10 },
+] as const;
+
 export function ImageEditor({ originalSource, originalFile, analysis, onStartOver }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const workspaceRef = useRef<HTMLElement>(null);
@@ -359,21 +366,40 @@ export function ImageEditor({ originalSource, originalFile, analysis, onStartOve
           </div>
         </div>
         {editedSource && <div className="mt-3 rounded-2xl border border-[#dbe3da] bg-[#fafcf9] p-3">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="m-0 text-[10px] font-bold uppercase tracking-[.14em] text-[#718076]">Lighting preview</p>
-                  <p className="m-0 mt-1 text-sm font-bold text-[#18211d]">☀ {lightingLabel}</p>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
+            <div className="flex min-w-0 flex-1 gap-4">
+              <div className="flex w-16 shrink-0 flex-col items-center rounded-2xl border border-[#dbe3da] bg-white px-2 py-3">
+                <span className="text-xs font-bold text-[#b77828]" title="Direct sunlight">☀ Sun</span>
+                <input
+                  aria-label="Lighting preview slider"
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={lightingValue}
+                  onChange={event => setLightingValue(Number(event.target.value))}
+                  className="my-3 h-40 w-8 accent-[#345447]"
+                  style={{ writingMode: "vertical-lr", direction: "rtl" }}
+                />
+                <span className="text-xs font-bold text-[#29445f]" title="Night / Artificial light">☾ Night</span>
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="m-0 text-[10px] font-bold uppercase tracking-[.14em] text-[#718076]">Lighting preview</p>
+                    <p className="m-0 mt-1 text-sm font-bold text-[#18211d]">☀ {lightingLabel}</p>
+                  </div>
+                  <span className="rounded-full bg-white px-2.5 py-1 font-mono text-xs font-bold text-[#526257]">{lightingValue}</span>
                 </div>
-                <span className="font-mono text-xs font-bold text-[#526257]">{lightingValue}</span>
+                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                  {LIGHTING_PRESETS.map(preset => {
+                    const active = lightingValue === preset.value;
+                    return <button key={preset.label} onClick={() => setLightingValue(preset.value)} className={`min-h-10 rounded-xl border px-3 py-2 text-left text-xs font-bold transition ${active ? "border-[#18211d] bg-[#18211d] text-white" : "border-[#dbe3da] bg-white text-[#526257] hover:border-[#9bad9f]"}`}>
+                      {preset.label}
+                    </button>;
+                  })}
+                </div>
+                <p className="m-0 mt-2 text-xs leading-5 text-[#718076]">Move the vertical Sun/Night slider for a quick preview. Use AI to create the final downloadable lighting result.</p>
               </div>
-              <div className="mt-3 grid grid-cols-[auto_1fr_auto] items-center gap-2">
-                <span className="text-xs font-semibold text-[#718076]">Night</span>
-                <input aria-label="Lighting preview slider" type="range" min="0" max="100" value={lightingValue} onChange={event => setLightingValue(Number(event.target.value))} className="w-full accent-[#345447]" />
-                <span className="text-xs font-semibold text-[#718076]">Sun</span>
-              </div>
-              <p className="m-0 mt-2 text-xs leading-5 text-[#718076]">Slider shows a quick preview only. Use AI to create the final downloadable lighting result.</p>
             </div>
             <button onClick={applyLightingWithAi} disabled={visualizing || !selectedColor || lightingValue === finalizedLightingValue || (areaCount > 0 && selectedWalls.length === 0)} className="h-10 shrink-0 rounded-xl border border-[#18211d] bg-white px-4 text-sm font-bold text-[#18211d] transition hover:bg-[#edf2ed] disabled:cursor-not-allowed disabled:opacity-45">{visualizing ? visualizingText : "Apply lighting with AI"}</button>
           </div>
