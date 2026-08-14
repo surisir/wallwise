@@ -11,6 +11,7 @@ type Props = { originalSource: string; originalFile: File; analysis: AnalysisRes
 type Point = { x: number; y: number };
 type DisplayMode = "original" | "ai-result";
 type SelectedPaint = { hex: string; name?: string; brand?: string; shadeName?: string; code?: string };
+type GenerateOptions = { lightingValue?: number; lightingLabel?: string; loadingText?: string };
 
 async function decodeMask(mask: string, width: number, height: number): Promise<ImageData> {
   const image = new Image();
@@ -39,6 +40,32 @@ function extensionFor(type: string) {
   return "png";
 }
 
+function lightingLabelFor(value: number) {
+  if (value <= 20) return "Night / artificial light";
+  if (value <= 40) return "Evening warm light";
+  if (value <= 60) return "Natural light";
+  if (value <= 80) return "Bright daylight";
+  return "Direct sunlight";
+}
+
+function lightingPreviewFilter(value: number) {
+  const normalized = Math.max(0, Math.min(100, value));
+  if (normalized < 50) {
+    const amount = (50 - normalized) / 50;
+    const brightness = 1 - amount * 0.34;
+    const saturation = 1 - amount * 0.16;
+    const sepia = amount * 0.22;
+    const contrast = 1 - amount * 0.04;
+    return `brightness(${brightness}) saturate(${saturation}) sepia(${sepia}) contrast(${contrast})`;
+  }
+  const amount = (normalized - 50) / 50;
+  const brightness = 1 + amount * 0.22;
+  const saturation = 1 + amount * 0.1;
+  const sepia = amount * 0.08;
+  const contrast = 1 + amount * 0.06;
+  return `brightness(${brightness}) saturate(${saturation}) sepia(${sepia}) contrast(${contrast})`;
+}
+
 export function ImageEditor({ originalSource, originalFile, analysis, onStartOver }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const workspaceRef = useRef<HTMLElement>(null);
@@ -53,15 +80,21 @@ export function ImageEditor({ originalSource, originalFile, analysis, onStartOve
   const [editedSource, setEditedSource] = useState<string | null>(null);
   const [displayMode, setDisplayMode] = useState<DisplayMode>("original");
   const [visualizing, setVisualizing] = useState(false);
+  const [visualizingText, setVisualizingText] = useState("Applying color…");
   const [visualizeError, setVisualizeError] = useState("");
   const [selectionError, setSelectionError] = useState("");
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [colorPickerOpen, setColorPickerOpen] = useState(false);
+  const [lightingValue, setLightingValue] = useState(50);
+  const [finalizedLightingValue, setFinalizedLightingValue] = useState(50);
 
   const displaySource = displayMode === "ai-result" && editedSource ? editedSource : originalSource;
   const areaCount = analysis.walls.length;
   const allAreasSelected = areaCount > 0 && selectedWalls.length === areaCount;
   const visibleMarkers = displayMode === "original";
+  const lightingLabel = lightingLabelFor(lightingValue);
+  const hasLightingPreview = displayMode === "ai-result" && Boolean(editedSource) && lightingValue !== finalizedLightingValue;
+  const canvasFilter = hasLightingPreview ? lightingPreviewFilter(lightingValue) : "none";
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -178,7 +211,7 @@ export function ImageEditor({ originalSource, originalFile, analysis, onStartOve
     setVisualizeError("");
   };
 
-  const generateVisualization = async () => {
+  const generateVisualization = async (options: GenerateOptions = {}) => {
     if (!selectedColor) {
       setVisualizeError("Choose a paint color before applying.");
       return;
@@ -189,6 +222,7 @@ export function ImageEditor({ originalSource, originalFile, analysis, onStartOve
     }
 
     setVisualizing(true);
+    setVisualizingText(options.loadingText ?? "Applying color…");
     setVisualizeError("");
     setSelectionError("");
     try {
@@ -210,17 +244,28 @@ export function ImageEditor({ originalSource, originalFile, analysis, onStartOve
         aiOnly: areaCount === 0 || allAreasSelected,
         areaIds: selectedAreaIds,
         targetPoints,
+        lightingValue: options.lightingValue,
+        lightingLabel: options.lightingLabel,
       });
       if (editedSource) URL.revokeObjectURL(editedSource);
       latestResultBlob.current = image;
       setEditedSource(URL.createObjectURL(image));
       setDisplayMode("ai-result");
+      const appliedLightingValue = typeof options.lightingValue === "number" ? options.lightingValue : 50;
+      setLightingValue(appliedLightingValue);
+      setFinalizedLightingValue(appliedLightingValue);
     } catch (error) {
       setVisualizeError(error instanceof Error ? error.message : "We couldn’t create your visualization.");
     } finally {
       setVisualizing(false);
     }
   };
+
+  const applyLightingWithAi = () => generateVisualization({
+    lightingValue,
+    lightingLabel,
+    loadingText: "Applying lighting…",
+  });
 
   const downloadResult = () => {
     const blob = latestResultBlob.current;
@@ -281,7 +326,7 @@ export function ImageEditor({ originalSource, originalFile, analysis, onStartOve
             }} onPointerMove={event => {
               if (displayMode !== "original") return;
               setHoverWall(wallAt(event.clientX, event.clientY));
-            }} onPointerLeave={() => setHoverWall(null)} className={`block h-auto max-w-full touch-manipulation object-contain ${isFullscreen ? "max-h-[calc(100dvh-104px)]" : "max-h-[calc(100dvh-260px)] md:max-h-[calc(100dvh-220px)]"}`} style={{ cursor: displayMode === "original" && hoverWall ? "pointer" : "default" }} />
+            }} onPointerLeave={() => setHoverWall(null)} className={`block h-auto max-w-full touch-manipulation object-contain transition-[filter] duration-200 ${isFullscreen ? "max-h-[calc(100dvh-104px)]" : "max-h-[calc(100dvh-260px)] md:max-h-[calc(100dvh-220px)]"}`} style={{ cursor: displayMode === "original" && hoverWall ? "pointer" : "default", filter: canvasFilter }} />
           </div>
         </div>
         {!ready && <div className="absolute inset-0 grid place-items-center bg-[#e8ebe6]/80 text-sm font-medium text-slate-600">Preparing editor…</div>}
@@ -310,9 +355,29 @@ export function ImageEditor({ originalSource, originalFile, analysis, onStartOve
             <ColorPanel value={selectedColor?.hex ?? null} onChange={updateColor} />
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <button onClick={generateVisualization} disabled={visualizing || !selectedColor || (areaCount > 0 && selectedWalls.length === 0)} className="h-10 whitespace-nowrap rounded-xl bg-[#18211d] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#2c4034] disabled:cursor-not-allowed disabled:opacity-45">{visualizing ? "Applying color…" : "Apply"}</button>
+            <button onClick={() => generateVisualization()} disabled={visualizing || !selectedColor || (areaCount > 0 && selectedWalls.length === 0)} className="h-10 whitespace-nowrap rounded-xl bg-[#18211d] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#2c4034] disabled:cursor-not-allowed disabled:opacity-45">{visualizing ? visualizingText : "Apply"}</button>
           </div>
         </div>
+        {editedSource && <div className="mt-3 rounded-2xl border border-[#dbe3da] bg-[#fafcf9] p-3">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="m-0 text-[10px] font-bold uppercase tracking-[.14em] text-[#718076]">Lighting preview</p>
+                  <p className="m-0 mt-1 text-sm font-bold text-[#18211d]">☀ {lightingLabel}</p>
+                </div>
+                <span className="font-mono text-xs font-bold text-[#526257]">{lightingValue}</span>
+              </div>
+              <div className="mt-3 grid grid-cols-[auto_1fr_auto] items-center gap-2">
+                <span className="text-xs font-semibold text-[#718076]">Night</span>
+                <input aria-label="Lighting preview slider" type="range" min="0" max="100" value={lightingValue} onChange={event => setLightingValue(Number(event.target.value))} className="w-full accent-[#345447]" />
+                <span className="text-xs font-semibold text-[#718076]">Sun</span>
+              </div>
+              <p className="m-0 mt-2 text-xs leading-5 text-[#718076]">Slider shows a quick preview only. Use AI to create the final downloadable lighting result.</p>
+            </div>
+            <button onClick={applyLightingWithAi} disabled={visualizing || !selectedColor || lightingValue === finalizedLightingValue || (areaCount > 0 && selectedWalls.length === 0)} className="h-10 shrink-0 rounded-xl border border-[#18211d] bg-white px-4 text-sm font-bold text-[#18211d] transition hover:bg-[#edf2ed] disabled:cursor-not-allowed disabled:opacity-45">{visualizing ? visualizingText : "Apply lighting with AI"}</button>
+          </div>
+        </div>}
         {(selectionError || visualizeError) && <p className="mb-0 mt-2 text-xs font-medium text-red-700">{selectionError || visualizeError}</p>}
         {areaCount > 0 && <p className="mb-0 mt-2 text-xs leading-5 text-[#718076]">By default all walls are included. Tap a wall marker or wall area on the original image to deselect it before applying.</p>}
       </div>}

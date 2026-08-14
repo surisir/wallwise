@@ -13,12 +13,14 @@ export async function analyzeRoom(file: File): Promise<AnalysisResult> {
   return body as AnalysisResult;
 }
 
-export async function visualizeWallColor(file: File, color: { hex: string; name?: string; aiOnly?: boolean; areaIds?: string[]; targetPoints?: { id: string; x: number; y: number }[] }): Promise<Blob> {
+export async function visualizeWallColor(file: File, color: { hex: string; name?: string; aiOnly?: boolean; areaIds?: string[]; targetPoints?: { id: string; x: number; y: number }[]; lightingValue?: number; lightingLabel?: string }): Promise<Blob> {
   const form = new FormData();
   form.append("image", file);
   form.append("color_hex", color.hex);
   form.append("color_rgb", hexRgb(color.hex).join(","));
   if (color.name) form.append("color_name", color.name);
+  if (typeof color.lightingValue === "number") form.append("lighting_value", String(color.lightingValue));
+  if (color.lightingLabel) form.append("lighting_label", color.lightingLabel);
   if (color.aiOnly) form.append("ai_only", "true");
   if (color.areaIds?.length) form.append("selected_area_ids", JSON.stringify(color.areaIds));
   if (color.targetPoints?.length) form.append("target_points", JSON.stringify(color.targetPoints));

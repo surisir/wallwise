@@ -59,3 +59,52 @@ def test_visualize_accepts_target_points(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert response.headers["x-image-provider"] == "test"
+
+
+def test_visualize_adds_lighting_guidance(monkeypatch) -> None:
+    import app.api.routes as routes
+
+    class Provider:
+        def edit_wall_color(self, original, filename, content_type, color):
+            assert "Lighting slider guidance: value 95/100" in color.scene_hint
+            assert "strong direct sunlight" in color.scene_hint
+            buffer = BytesIO()
+            Image.new("RGB", (16, 16), "red").save(buffer, "PNG")
+            return ImageEditResult(buffer.getvalue(), "image/png", 16, 16, 25, "test")
+
+    monkeypatch.setattr(routes, "create_image_editing_provider", lambda settings: Provider())
+
+    source = BytesIO()
+    Image.new("RGB", (80, 80)).save(source, "PNG")
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/visualize",
+            files={"image": ("room.png", source.getvalue(), "image/png")},
+            data={
+                "color_hex": "#AA0000",
+                "color_rgb": "170,0,0",
+                "lighting_value": "95",
+                "lighting_label": "Direct sunlight",
+            },
+        )
+
+    assert response.status_code == 200
+
+
+def test_visualize_rejects_invalid_lighting_value() -> None:
+    source = BytesIO()
+    Image.new("RGB", (80, 80)).save(source, "PNG")
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/visualize",
+            files={"image": ("room.png", source.getvalue(), "image/png")},
+            data={
+                "color_hex": "#AA0000",
+                "color_rgb": "170,0,0",
+                "lighting_value": "101",
+            },
+        )
+
+    assert response.status_code == 422

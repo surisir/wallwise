@@ -32,6 +32,49 @@ _objects = ObjectDetectionService(
 )
 
 
+def _lighting_instruction(value: int | None, label: str | None) -> str:
+    if value is None:
+        return ""
+    if value <= 20:
+        mode = "night / artificial light"
+        detail = (
+            "Show the selected paint color under believable night or artificial lighting. "
+            "The walls should read darker and less sunlit, with realistic warm/cool fixture "
+            "illumination where appropriate."
+        )
+    elif value <= 40:
+        mode = "evening warm light"
+        detail = (
+            "Show the selected paint color under warm evening or golden-hour light. "
+            "Use gentle warmth and lower light intensity while preserving natural shadows."
+        )
+    elif value <= 60:
+        mode = "same natural lighting as the original photo"
+        detail = (
+            "Preserve the original photograph's lighting as closely as possible. "
+            "Do not introduce a new time of day or artificial lighting change."
+        )
+    elif value <= 80:
+        mode = "bright daylight"
+        detail = (
+            "Show the selected paint color under bright daylight. Keep realistic highlights, "
+            "shadow direction, and texture without washing out the paint color."
+        )
+    else:
+        mode = "strong direct sunlight"
+        detail = (
+            "Show the selected paint color under strong direct sunlight. Preserve believable "
+            "sunlit highlights, harder shadows, wall texture, and the same architecture."
+        )
+    safe_label = label.strip() if label else mode
+    return (
+        f" Lighting slider guidance: value {value}/100, requested appearance: "
+        f"{safe_label}. {detail} This is a lighting visualization only; do not "
+        "change room/building geometry, camera angle, objects, wall selection, "
+        "paint color identity, or composition."
+    )
+
+
 def _fallback_room_masks(image) -> tuple[dict[str, np.ndarray], float]:
     """Return a conservative editable wall estimate when CPU segmentation times out.
 
@@ -355,6 +398,8 @@ async def visualize_wall_color(
     ai_only: bool = Form(False),
     selected_area_ids: str | None = Form(None),
     target_points: str | None = Form(None),
+    lighting_value: int | None = Form(None),
+    lighting_label: str | None = Form(None),
     settings: Settings = Depends(get_settings),
 ) -> Response:
 
@@ -376,6 +421,12 @@ async def visualize_wall_color(
         raise HTTPException(
             status_code=422,
             detail="The supplied RGB value does not match the selected HEX color.",
+        )
+
+    if lighting_value is not None and not 0 <= lighting_value <= 100:
+        raise HTTPException(
+            status_code=422,
+            detail="Lighting value must be between 0 and 100.",
         )
 
     # ---------------------------------------------------------
@@ -477,6 +528,10 @@ async def visualize_wall_color(
             "All visible paintable wall surfaces are selected. Repaint all "
             "paintable walls and preserve everything else."
         )
+
+    lighting_instruction = _lighting_instruction(lighting_value, lighting_label)
+    if lighting_instruction:
+        edit_instruction = f"{edit_instruction}{lighting_instruction}"
 
     selected_color = SelectedColor(
         color_hex.upper(),
