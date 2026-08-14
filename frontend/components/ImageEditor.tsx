@@ -401,7 +401,7 @@ export function ImageEditor({ originalSource, originalFile, analysis, onStartOve
                 <p className="m-0 mt-2 text-xs leading-5 text-[#718076]">Move the vertical Sun/Night slider for a quick preview. Use AI to create the final downloadable lighting result.</p>
               </div>
             </div>
-            <button onClick={applyLightingWithAi} disabled={visualizing || !selectedColor || lightingValue === finalizedLightingValue || (areaCount > 0 && selectedWalls.length === 0)} className="h-10 shrink-0 rounded-xl border border-[#18211d] bg-white px-4 text-sm font-bold text-[#18211d] transition hover:bg-[#edf2ed] disabled:cursor-not-allowed disabled:opacity-45">{visualizing ? visualizingText : "Apply lighting with AI"}</button>
+            <button onClick={applyLightingWithAi} disabled={visualizing || !selectedColor || lightingValue === finalizedLightingValue || (areaCount > 0 && selectedWalls.length === 0)} className="h-10 shrink-0 rounded-xl border border-[#18211d] bg-white px-4 text-sm font-bold text-[#18211d] transition hover:bg-[#edf2ed] disabled:cursor-not-allowed disabled:opacity-45">{visualizing ? visualizingText : "Apply Lighting"}</button>
           </div>
         </div>}
         {(selectionError || visualizeError) && <p className="mb-0 mt-2 text-xs font-medium text-red-700">{selectionError || visualizeError}</p>}
