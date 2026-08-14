@@ -5,11 +5,12 @@ import { AnalysisResult } from "@/types/analysis";
 import { clientToImagePoint } from "@/lib/canvas";
 import { visualizeWallColor } from "@/lib/api";
 import { ColorPanel } from "./ColorPanel";
-import { ColorPickerModal } from "./ColorPickerModal";
+import { ColorPickerModal, PickedColor } from "./ColorPickerModal";
 
 type Props = { originalSource: string; originalFile: File; analysis: AnalysisResult; onStartOver: () => void };
 type Point = { x: number; y: number };
 type DisplayMode = "original" | "ai-result";
+type SelectedPaint = { hex: string; name?: string; brand?: string; shadeName?: string; code?: string };
 
 async function decodeMask(mask: string, width: number, height: number): Promise<ImageData> {
   const image = new Image();
@@ -46,7 +47,7 @@ export function ImageEditor({ originalSource, originalFile, analysis, onStartOve
   const latestResultBlob = useRef<Blob | null>(null);
 
   const [ready, setReady] = useState(false);
-  const [selectedColor, setSelectedColor] = useState<string | null>(null);
+  const [selectedColor, setSelectedColor] = useState<SelectedPaint | null>(null);
   const [selectedWalls, setSelectedWalls] = useState<string[]>(analysis.walls.map(wall => wall.id));
   const [hoverWall, setHoverWall] = useState<string | null>(null);
   const [editedSource, setEditedSource] = useState<string | null>(null);
@@ -161,8 +162,18 @@ export function ImageEditor({ originalSource, originalFile, analysis, onStartOve
     setSelectionError("Select at least one wall.");
   };
 
-  const updateColor = (hex: string) => {
-    setSelectedColor(hex);
+  const updateColor = (color: string | PickedColor) => {
+    if (typeof color === "string") {
+      setSelectedColor({ hex: color.toUpperCase(), name: `Custom color ${color.toUpperCase()}` });
+    } else {
+      setSelectedColor({
+        hex: color.hex.toUpperCase(),
+        name: color.name,
+        brand: color.shade?.brandName,
+        shadeName: color.shade?.name,
+        code: color.shade?.code,
+      });
+    }
     setSelectionError("");
     setVisualizeError("");
   };
@@ -194,7 +205,8 @@ export function ImageEditor({ originalSource, originalFile, analysis, onStartOve
         };
       });
       const image = await visualizeWallColor(originalFile, {
-        hex: selectedColor,
+        hex: selectedColor.hex,
+        name: selectedColor.name,
         aiOnly: areaCount === 0 || allAreasSelected,
         areaIds: selectedAreaIds,
         targetPoints,
@@ -286,10 +298,16 @@ export function ImageEditor({ originalSource, originalFile, analysis, onStartOve
           <div className="flex min-w-0 flex-1 flex-col gap-2">
             <div className="flex items-center gap-2">
               <button onClick={() => setDisplayMode("original")} className={`h-8 rounded-lg border px-2.5 text-xs font-bold transition ${displayMode === "original" ? "border-[#18211d] bg-[#18211d] text-white" : "border-[#dbe3da] bg-[#fafcf9] text-[#526257] hover:border-[#9bad9f]"}`}>Original</button>
-              {selectedColor ? <><span className="h-7 w-7 rounded-lg border border-black/10" style={{ background: selectedColor }} /><span className="font-mono text-sm font-bold text-[#243129]">{selectedColor}</span></> : <span className="text-xs font-medium text-[#718076]">No color selected</span>}
+              {selectedColor ? <div className="flex min-w-0 items-center gap-2">
+                <span className="h-7 w-7 shrink-0 rounded-lg border border-black/10" style={{ background: selectedColor.hex }} />
+                <span className="min-w-0 truncate text-sm font-bold text-[#243129]">
+                  {selectedColor.shadeName ? `${selectedColor.shadeName} · ` : ""}<span className="font-mono">{selectedColor.hex}</span>
+                </span>
+              </div> : <span className="text-xs font-medium text-[#718076]">No color selected</span>}
               <button onClick={() => setColorPickerOpen(true)} className="ml-1 inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#dbe3da] bg-[#fafcf9] px-2.5 text-xs font-bold text-[#526257] hover:border-[#9bad9f]">⌾ Pick Color</button>
             </div>
-            <ColorPanel value={selectedColor} onChange={updateColor} />
+            {selectedColor?.brand && <p className="m-0 text-xs font-semibold text-[#718076]">{selectedColor.brand} · {selectedColor.shadeName} · {selectedColor.code}</p>}
+            <ColorPanel value={selectedColor?.hex ?? null} onChange={updateColor} />
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <button onClick={generateVisualization} disabled={visualizing || !selectedColor || (areaCount > 0 && selectedWalls.length === 0)} className="h-10 whitespace-nowrap rounded-xl bg-[#18211d] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#2c4034] disabled:cursor-not-allowed disabled:opacity-45">{visualizing ? "Applying color…" : "Apply"}</button>
@@ -299,6 +317,6 @@ export function ImageEditor({ originalSource, originalFile, analysis, onStartOve
         {areaCount > 0 && <p className="mb-0 mt-2 text-xs leading-5 text-[#718076]">By default all walls are included. Tap a wall marker or wall area on the original image to deselect it before applying.</p>}
       </div>}
     </section>
-    {colorPickerOpen && <ColorPickerModal onClose={() => setColorPickerOpen(false)} onUseColor={hex => { updateColor(hex); setColorPickerOpen(false); }} />}
+    {colorPickerOpen && <ColorPickerModal onClose={() => setColorPickerOpen(false)} onUseColor={color => { updateColor(color); setColorPickerOpen(false); }} />}
   </main>;
 }
