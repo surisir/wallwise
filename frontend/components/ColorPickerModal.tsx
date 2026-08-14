@@ -102,9 +102,9 @@ export function ColorPickerModal({ onClose, onUseColor }: Props) {
     onUseColor({ hex: shade.hex, name: colorLabel(shade), shade });
   };
 
-  return <div role="dialog" aria-modal="true" aria-label="Pick a paint color" className="fixed inset-0 z-[70] grid place-items-center bg-[#101612]/65 p-3 sm:p-6">
-    <div className="flex max-h-[92dvh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-      <div className="flex items-start justify-between gap-4 border-b border-[#e4eae3] p-4 sm:p-5">
+  return <div role="dialog" aria-modal="true" aria-label="Pick a paint color" className="fixed inset-0 z-[70] grid place-items-end bg-[#101612]/65 p-0 sm:place-items-center sm:p-6">
+    <div className="flex h-[100dvh] w-full max-w-5xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:h-auto sm:max-h-[92dvh] sm:rounded-2xl">
+      <div className="shrink-0 flex items-start justify-between gap-4 border-b border-[#e4eae3] p-4 sm:p-5">
         <div>
           <h2 className="m-0 text-lg font-semibold text-[#18211d]">Pick a paint shade</h2>
           <p className="mb-0 mt-1 text-sm text-slate-500">Choose a brand shade, enter a custom HEX, or sample a shade-card photo.</p>
@@ -112,7 +112,7 @@ export function ColorPickerModal({ onClose, onUseColor }: Props) {
         <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg text-lg text-slate-600 hover:bg-slate-100" aria-label="Close color picker">×</button>
       </div>
 
-      <div className="flex gap-2 overflow-x-auto border-b border-[#e4eae3] px-4 py-3 sm:px-5">
+      <div className="shrink-0 flex gap-2 overflow-x-auto border-b border-[#e4eae3] px-4 py-3 sm:px-5">
         {[
           ["catalog", "Brand catalog"],
           ["custom", "Custom HEX"],
@@ -120,21 +120,21 @@ export function ColorPickerModal({ onClose, onUseColor }: Props) {
         ].map(([key, label]) => <button key={key} onClick={() => setMode(key as PickerMode)} className={`h-9 shrink-0 rounded-xl px-3 text-sm font-bold transition ${mode === key ? "bg-[#18211d] text-white" : "bg-[#f1f4ef] text-[#526257] hover:bg-[#e5ebe3]"}`}>{label}</button>)}
       </div>
 
-      {mode === "catalog" && <div className="grid min-h-0 flex-1 overflow-hidden lg:grid-cols-[260px_1fr]">
-        <aside className="border-b border-[#e4eae3] p-4 lg:border-b-0 lg:border-r sm:p-5">
+      {mode === "catalog" && <div className="grid min-h-0 flex-1 overflow-y-auto lg:grid-cols-[260px_1fr] lg:overflow-hidden">
+        <aside className="shrink-0 border-b border-[#e4eae3] p-3 lg:border-b-0 lg:border-r lg:p-5">
           <p className="m-0 text-[10px] font-bold uppercase tracking-[.14em] text-[#718076]">Select company</p>
-          <div className="mt-3 grid gap-2">
+          <div className="mt-3 flex gap-2 overflow-x-auto pb-1 lg:grid lg:overflow-visible lg:pb-0">
             {PAINT_BRANDS.map(brand => {
               const active = brand.id === brandId;
-              return <button key={brand.id} onClick={() => { setBrandId(brand.id); setCategory("All"); setQuery(""); setSelectedShade(null); }} className={`rounded-xl border p-3 text-left transition ${active ? "border-[#18211d] bg-[#18211d] text-white" : "border-[#dbe3da] bg-[#fafcf9] text-[#243129] hover:border-[#9bad9f]"}`}>
+              return <button key={brand.id} onClick={() => { setBrandId(brand.id); setCategory("All"); setQuery(""); setSelectedShade(null); }} className={`w-[170px] shrink-0 rounded-xl border p-3 text-left transition lg:w-auto ${active ? "border-[#18211d] bg-[#18211d] text-white" : "border-[#dbe3da] bg-[#fafcf9] text-[#243129] hover:border-[#9bad9f]"}`}>
                 <span className="block text-sm font-bold">{brand.name}</span>
-                <span className={`mt-1 block text-xs leading-4 ${active ? "text-white/75" : "text-[#718076]"}`}>{brand.description}</span>
+                <span className={`mt-1 hidden text-xs leading-4 sm:block ${active ? "text-white/75" : "text-[#718076]"}`}>{brand.description}</span>
               </button>;
             })}
           </div>
         </aside>
 
-        <section className="flex min-h-0 flex-col p-4 sm:p-5">
+        <section className="flex min-h-0 flex-col p-3 pb-4 sm:p-5 lg:overflow-hidden">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="m-0 text-[10px] font-bold uppercase tracking-[.14em] text-[#718076]">Shade cards</p>
@@ -145,12 +145,12 @@ export function ColorPickerModal({ onClose, onUseColor }: Props) {
           <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
             {categories.map(item => <button key={item} onClick={() => setCategory(item)} className={`h-8 shrink-0 rounded-full px-3 text-xs font-bold ${category === item ? "bg-[#345447] text-white" : "bg-[#edf2ed] text-[#526257] hover:bg-[#e1e9e0]"}`}>{item}</button>)}
           </div>
-          <div className="mt-4 grid min-h-0 flex-1 grid-cols-2 gap-3 overflow-y-auto pr-1 sm:grid-cols-3 xl:grid-cols-4">
+          <div className="mt-4 grid grid-cols-2 gap-3 pr-1 sm:grid-cols-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto xl:grid-cols-4">
             {visibleShades.map(shade => {
               const active = selectedShade?.brandId === shade.brandId && selectedShade.code === shade.code;
               return <button key={`${shade.brandId}-${shade.code}`} onClick={() => setSelectedShade(shade)} onDoubleClick={() => useShade(shade)} className={`overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${active ? "border-[#18211d] ring-2 ring-[#18211d]/15" : "border-[#dbe3da]"}`}>
-                <span className="block h-20 border-b border-black/5" style={{ background: shade.hex }} />
-                <span className="block p-3">
+                <span className="block h-16 border-b border-black/5 sm:h-20" style={{ background: shade.hex }} />
+                <span className="block p-2.5 sm:p-3">
                   <span className="block text-sm font-bold text-[#18211d]">{shade.name}</span>
                   <span className="mt-1 block font-mono text-xs font-semibold text-[#526257]">{shade.code}</span>
                   <span className="mt-1 block text-xs text-[#718076]">{shade.category}</span>
@@ -209,7 +209,7 @@ export function ColorPickerModal({ onClose, onUseColor }: Props) {
 }
 
 function SelectedColorBar({ hex, title, subtitle, onCancel, onUse }: { hex: string; title: string; subtitle: string; onCancel: () => void; onUse: () => void }) {
-  return <div className="mt-4 flex flex-col gap-3 rounded-xl border border-[#dbe3da] bg-[#fafcf9] p-3 sm:flex-row sm:items-center sm:justify-between">
+  return <div className="sticky bottom-0 mt-4 flex flex-col gap-3 rounded-xl border border-[#dbe3da] bg-[#fafcf9]/95 p-3 shadow-[0_-10px_28px_rgba(24,33,29,.08)] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
     <div className="flex min-w-0 items-center gap-3">
       <span className="h-11 w-11 shrink-0 rounded-lg border border-black/10" style={{ background: hex }} />
       <div className="min-w-0">
@@ -219,7 +219,7 @@ function SelectedColorBar({ hex, title, subtitle, onCancel, onUse }: { hex: stri
     </div>
     <div className="flex gap-2">
       <button onClick={onCancel} className="h-9 rounded-lg px-3 text-sm font-semibold text-[#526257] hover:bg-[#edf2ed]">Cancel</button>
-      <button onClick={onUse} className="h-9 rounded-lg bg-[#18211d] px-3 text-sm font-semibold text-white">Use this shade</button>
+      <button onClick={onUse} className="h-10 flex-1 rounded-lg bg-[#18211d] px-3 text-sm font-semibold text-white sm:h-9 sm:flex-none">Use this shade</button>
     </div>
   </div>;
 }
