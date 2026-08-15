@@ -275,7 +275,7 @@ Color name: {color.descriptive_name}
 HEX: {color.hex}
 RGB: ({red}, {green}, {blue})
 
-The output must remain the same room.
+The output must remain the exact same photograph/scene.
 
 {STRICT_REPAINT_ONLY_RULES}
 
@@ -286,7 +286,7 @@ Preserve the camera angle, perspective, composition, natural lighting,
 shadows and reflections.
 
 Do not add, remove, move, replace, resize, duplicate, or redraw objects.
-Do not redesign the room, wall, decor, furniture, TV screen, picture frames,
+Do not redesign the room, building, facade, wall, decor, furniture, TV screen, picture frames,
 photos, portraits or artwork.
 Do not tint furniture.
 Do not change the ceiling or flooring.

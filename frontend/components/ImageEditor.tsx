@@ -10,6 +10,7 @@ import { ProjectType } from "@/types/project";
 
 type Props = { originalSource: string; originalFile: File; analysis: AnalysisResult; projectType: ProjectType; onStartOver: () => void };
 type Point = { x: number; y: number };
+type GuidancePoint = Point & { id: string; xPercent: number; yPercent: number };
 type DisplayMode = "original" | "ai-result";
 type SelectedPaint = { hex: string; name?: string; brand?: string; shadeName?: string; code?: string };
 type GenerateOptions = { lightingValue?: number; lightingLabel?: string; loadingText?: string };
@@ -73,6 +74,10 @@ const LIGHTING_PRESETS = [
   { label: "Evening / Warm light", value: 35 },
   { label: "Night / Artificial light", value: 10 },
 ] as const;
+
+function percent(value: number, total: number) {
+  return Math.round((value / Math.max(1, total)) * 1000) / 10;
+}
 
 export function ImageEditor({ originalSource, originalFile, analysis, projectType, onStartOver }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -236,29 +241,44 @@ export function ImageEditor({ originalSource, originalFile, analysis, projectTyp
     setSelectionError("");
     try {
       const selectedAreaIds = areaCount > 0 ? selectedWalls : undefined;
-      const targetPoints = selectedAreaIds?.map(id => {
-        const wall = analysis.walls.find(item => item.id === id)!;
-        const image = imageRef.current;
+      const baseImage = imageRef.current;
+      const imageSize = {
+        width: baseImage?.naturalWidth ?? analysis.image.width,
+        height: baseImage?.naturalHeight ?? analysis.image.height,
+      };
+      const guidancePointFor = (wall: AnalysisResult["walls"][number]): GuidancePoint => {
+        const marker = markerFor(wall, analysis.image, imageSize);
         return {
-          id,
-          ...markerFor(wall, analysis.image, {
-            width: image?.naturalWidth ?? analysis.image.width,
-            height: image?.naturalHeight ?? analysis.image.height,
-          }),
+          id: wall.id,
+          ...marker,
+          xPercent: percent(marker.x, imageSize.width),
+          yPercent: percent(marker.y, imageSize.height),
         };
-      });
-      const image = await visualizeWallColor(originalFile, {
+      };
+      const targetPoints = selectedAreaIds?.map(id => {
+        const wall = analysis.walls.find(item => item.id === id);
+        if (!wall) return null;
+        return guidancePointFor(wall);
+      }).filter((point): point is GuidancePoint => Boolean(point));
+      const excludedPoints = areaCount > 0 && selectedAreaIds && !allAreasSelected
+        ? analysis.walls
+          .filter(wall => !selectedAreaIds.includes(wall.id))
+          .map(guidancePointFor)
+        : undefined;
+      const generatedImage = await visualizeWallColor(originalFile, {
         hex: selectedColor.hex,
         name: selectedColor.name,
+        projectType,
         aiOnly: areaCount === 0 || allAreasSelected,
         areaIds: selectedAreaIds,
         targetPoints,
+        excludedPoints,
         lightingValue: options.lightingValue,
         lightingLabel: options.lightingLabel,
       });
       if (editedSource) URL.revokeObjectURL(editedSource);
-      latestResultBlob.current = image;
-      setEditedSource(URL.createObjectURL(image));
+      latestResultBlob.current = generatedImage;
+      setEditedSource(URL.createObjectURL(generatedImage));
       setDisplayMode("ai-result");
       const appliedLightingValue = typeof options.lightingValue === "number" ? options.lightingValue : 50;
       setLightingValue(appliedLightingValue);

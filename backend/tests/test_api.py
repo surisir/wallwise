@@ -53,12 +53,50 @@ def test_visualize_accepts_target_points(monkeypatch) -> None:
                 "color_hex": "#AA0000",
                 "color_rgb": "170,0,0",
                 "selected_area_ids": '["wall-1"]',
-                "target_points": '[{"id":"wall-1","x":20,"y":30}]',
+                "target_points": '[{"id":"wall-1","x":20,"y":30,"xPercent":25,"yPercent":37.5}]',
             },
         )
 
     assert response.status_code == 200
     assert response.headers["x-image-provider"] == "test"
+
+
+def test_visualize_sends_selected_and_deselected_exterior_guidance(monkeypatch) -> None:
+    import app.api.routes as routes
+
+    class Provider:
+        def edit_wall_color(self, original, filename, content_type, color):
+            assert "This is a targeted repaint, not a full-facade repaint" in color.scene_hint
+            assert "wall-1 at image coordinate (20, 30)" in color.scene_hint
+            assert "approximately 25% from the left and 37.5% from the top" in color.scene_hint
+            assert "wall-2 at image coordinate (60, 30)" in color.scene_hint
+            assert "must remain their original color" in color.scene_hint
+            assert "neighboring buildings" in color.scene_hint
+            assert "left/right side facades" in color.scene_hint
+            buffer = BytesIO()
+            Image.new("RGB", (16, 16), "red").save(buffer, "PNG")
+            return ImageEditResult(buffer.getvalue(), "image/png", 16, 16, 25, "test")
+
+    monkeypatch.setattr(routes, "create_image_editing_provider", lambda settings: Provider())
+
+    source = BytesIO()
+    Image.new("RGB", (80, 80)).save(source, "PNG")
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/visualize",
+            files={"image": ("facade.png", source.getvalue(), "image/png")},
+            data={
+                "color_hex": "#D9A6A2",
+                "color_rgb": "217,166,162",
+                "project_type": "exterior",
+                "selected_area_ids": '["wall-1"]',
+                "target_points": '[{"id":"wall-1","x":20,"y":30,"xPercent":25,"yPercent":37.5}]',
+                "excluded_points": '[{"id":"wall-2","x":60,"y":30,"xPercent":75,"yPercent":37.5}]',
+            },
+        )
+
+    assert response.status_code == 200
 
 
 def test_visualize_adds_lighting_guidance(monkeypatch) -> None:

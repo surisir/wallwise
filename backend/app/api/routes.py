@@ -75,6 +75,71 @@ def _lighting_instruction(value: int | None, label: str | None) -> str:
     )
 
 
+def _parse_guidance_points(raw: str | None, field_name: str) -> list[dict]:
+    if not raw:
+        return []
+    try:
+        points = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{field_name} must be a JSON array.",
+        ) from exc
+
+    def valid_number(value) -> bool:
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+    if not isinstance(points, list):
+        raise HTTPException(
+            status_code=422,
+            detail=f"{field_name} must be a JSON array.",
+        )
+
+    normalized = []
+    for point in points:
+        if (
+            not isinstance(point, dict)
+            or not isinstance(point.get("id"), str)
+            or not point.get("id")
+            or not isinstance(point.get("x"), int)
+            or isinstance(point.get("x"), bool)
+            or not isinstance(point.get("y"), int)
+            or isinstance(point.get("y"), bool)
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail=f"{field_name} must be a JSON array of {{id, x, y}}.",
+            )
+        x_percent = point.get("xPercent")
+        y_percent = point.get("yPercent")
+        if (
+            (x_percent is not None and not valid_number(x_percent))
+            or (y_percent is not None and not valid_number(y_percent))
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail=f"{field_name} percentages must be numbers.",
+            )
+        normalized.append(point)
+    return normalized
+
+
+def _format_guidance_points(points: list[dict]) -> str:
+    formatted = []
+    for point in points:
+        percent_hint = ""
+        if point.get("xPercent") is not None and point.get("yPercent") is not None:
+            percent_hint = (
+                f", approximately {point['xPercent']}% from the left and "
+                f"{point['yPercent']}% from the top"
+            )
+        formatted.append(
+            f"{point['id']} at image coordinate ({point['x']}, {point['y']})"
+            f"{percent_hint}"
+        )
+    return "; ".join(formatted)
+
+
 def _fallback_room_masks(image) -> tuple[dict[str, np.ndarray], float]:
     """Return a conservative editable wall estimate when CPU segmentation times out.
 
@@ -398,6 +463,8 @@ async def visualize_wall_color(
     ai_only: bool = Form(False),
     selected_area_ids: str | None = Form(None),
     target_points: str | None = Form(None),
+    excluded_points: str | None = Form(None),
+    project_type: str | None = Form(None),
     lighting_value: int | None = Form(None),
     lighting_label: str | None = Form(None),
     settings: Settings = Depends(get_settings),
@@ -429,6 +496,12 @@ async def visualize_wall_color(
             detail="Lighting value must be between 0 and 100.",
         )
 
+    if project_type and project_type not in {"interior", "exterior"}:
+        raise HTTPException(
+            status_code=422,
+            detail="Project type must be interior or exterior.",
+        )
+
     # ---------------------------------------------------------
     # 2. Parse selected areas
     # ---------------------------------------------------------
@@ -456,32 +529,8 @@ async def visualize_wall_color(
             detail="Selected areas must be a JSON array of IDs.",
         )
 
-    try:
-        selected_points = (
-            json.loads(target_points)
-            if target_points
-            else []
-        )
-    except json.JSONDecodeError as exc:
-        raise HTTPException(
-            status_code=422,
-            detail="Target points must be a JSON array.",
-        ) from exc
-
-    if (
-        not isinstance(selected_points, list)
-        or not all(
-            isinstance(point, dict)
-            and isinstance(point.get("id"), str)
-            and isinstance(point.get("x"), int)
-            and isinstance(point.get("y"), int)
-            for point in selected_points
-        )
-    ):
-        raise HTTPException(
-            status_code=422,
-            detail="Target points must be a JSON array of {id, x, y}.",
-        )
+    selected_points = _parse_guidance_points(target_points, "Target points")
+    deselected_points = _parse_guidance_points(excluded_points, "Excluded points")
 
     # ---------------------------------------------------------
     # 3. Validate uploaded image
@@ -505,19 +554,45 @@ async def visualize_wall_color(
             "only those surfaces while preserving openings, landscaping, "
             "trim, roof, pavement and all objects."
         )
+        if project_type == "exterior":
+            edit_instruction = (
+                f"{edit_instruction} For exterior photos, repaint only the "
+                "main property's paintable exterior walls/facade surfaces. "
+                "Do not repaint neighboring buildings, adjacent houses, sky, "
+                "trees, plants, roof, signage, pavement, driveway, road, "
+                "windows, doors, gates, railings, trim or decorative panels."
+            )
     elif selected_areas and selected_points:
-        point_summary = "; ".join(
-            f"{point['id']} at image coordinate ({point['x']}, {point['y']})"
-            for point in selected_points
-        )
+        point_summary = _format_guidance_points(selected_points)
+        excluded_summary = _format_guidance_points(deselected_points)
         edit_instruction = (
-            "Repaint only the wall surfaces selected by the user. "
-            "The selected wall targets are identified by natural-image "
-            f"coordinates: {point_summary}. Treat these coordinates as "
-            "guidance for which wall planes to repaint; do not draw or "
-            "leave any markers in the final image. Leave all unselected "
-            "walls unchanged."
+            "This is a targeted repaint, not a full-facade repaint. "
+            "Repaint ONLY the selected wall plane(s) containing these target "
+            f"points: {point_summary}. Do not repaint any other wall plane "
+            "or facade area. Treat these coordinates as natural-image "
+            "guidance for which exact surfaces to repaint; do not draw or "
+            "leave any markers in the final image. "
         )
+        if deselected_points:
+            edit_instruction = (
+                f"{edit_instruction} The following deselected/unselected wall "
+                "or facade targets must remain their original color and must "
+                f"not be repainted: {excluded_summary}. "
+            )
+        edit_instruction = (
+            f"{edit_instruction} If the selected target is ambiguous, repaint "
+            "less rather than more: keep the repaint local to the selected "
+            "wall plane and leave adjacent or surrounding surfaces unchanged."
+        )
+        if project_type == "exterior":
+            edit_instruction = (
+                f"{edit_instruction} For exterior photos, do not repaint "
+                "neighboring buildings, adjacent houses, left/right side "
+                "facades, boundary walls, roof, signage, pavement, driveway, "
+                "road, landscaping, trees, plants, windows, doors, gates, "
+                "railings, columns, trim or decorative panels unless those "
+                "exact surfaces are selected."
+            )
     elif selected_areas:
         edit_instruction = (
             "Repaint only the user-selected wall areas: "
