@@ -239,12 +239,12 @@ export function ColorPickerModal({ onClose, onUseColor }: Props) {
             <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
               {categories.map(item => <button key={item} onClick={() => setCategory(item)} className={`h-8 shrink-0 rounded-full px-3 text-xs font-bold ${category === item ? "bg-[#345447] text-white" : "bg-[#edf2ed] text-[#526257] hover:bg-[#e1e9e0]"}`}>{item}</button>)}
             </div>
-            <div className="mt-4 grid grid-cols-2 gap-3 pr-1 sm:grid-cols-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto xl:grid-cols-4">
+            <div className="mt-4 grid max-h-[48dvh] grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-3 overflow-y-auto pr-2 lg:min-h-0 lg:flex-1 lg:max-h-none">
               {visibleShades.map(shade => {
                 const active = selectedShade?.brandId === shade.brandId && selectedShade.code === shade.code;
-                return <button key={`${shade.brandId}-${shade.code}`} onClick={() => setSelectedShade(shade)} onDoubleClick={() => useShade(shade)} className={`overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${active ? "border-[#18211d] ring-2 ring-[#18211d]/15" : "border-[#dbe3da]"}`}>
-                  <span className="block h-16 border-b border-black/5 sm:h-20" style={{ background: shade.hex }} />
-                  <span className="block p-2.5 sm:p-3">
+                return <button key={`${shade.brandId}-${shade.code}`} onClick={() => setSelectedShade(shade)} onDoubleClick={() => useShade(shade)} className={`flex h-[180px] min-w-0 flex-col overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${active ? "border-[#18211d] ring-2 ring-[#18211d]/15" : "border-[#dbe3da]"}`}>
+                  <span className="block h-20 shrink-0 border-b border-black/5" style={{ background: shade.hex }} />
+                  <span className="block min-w-0 flex-1 p-2.5 sm:p-3">
                     <span className="block text-sm font-bold text-[#18211d]">{shade.name}</span>
                     <span className="mt-1 block font-mono text-xs font-semibold text-[#526257]">{shade.code}</span>
                     <span className="mt-1 block text-xs text-[#718076]">{shade.category}</span>
