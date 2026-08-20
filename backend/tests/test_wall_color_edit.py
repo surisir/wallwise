@@ -109,3 +109,39 @@ def test_cloudflare_provider_resizes_reference_and_returns_generated_image(monke
     assert "Bearer token" == captured["headers"]["Authorization"]
     assert result.provider == "cloudflare-flux"
     assert (result.width, result.height) == (1024, 683)
+
+
+def test_cloudflare_provider_sends_selected_mask_as_second_reference(monkeypatch) -> None:
+    from io import BytesIO
+    from PIL import Image
+
+    original = BytesIO()
+    Image.new("RGB", (750, 500), "white").save(original, format="PNG")
+    selected_mask = BytesIO()
+    Image.new("L", (750, 500), 255).save(selected_mask, format="PNG")
+    generated = BytesIO()
+    Image.new("RGB", (1024, 683), "red").save(generated, format="PNG")
+    captured = {}
+
+    class Response:
+        headers = {"content-type": "image/png"}
+        content = generated.getvalue()
+        def raise_for_status(self) -> None: pass
+
+    def fake_post(url, *, headers, data, files, timeout):
+        captured.update({"data": data, "files": files})
+        return Response()
+
+    monkeypatch.setattr("app.services.wall_color_edit.httpx.post", fake_post)
+    CloudflareFluxProvider("account", "token", "@cf/black-forest-labs/flux-2-klein-4b", 10).edit_wall_color(
+        original.getvalue(),
+        "room.png",
+        "image/png",
+        SelectedColor("#C62828", "Red", selected_mask=selected_mask.getvalue()),
+    )
+
+    reference = Image.open(BytesIO(captured["files"]["input_image_0"][1]))
+    mask_reference = Image.open(BytesIO(captured["files"]["input_image_1"][1]))
+    assert reference.size == mask_reference.size == (511, 341)
+    assert "Image 1 is a black-and-white selection mask" in captured["data"]["prompt"]
+    assert "Repaint ONLY the white area of image 1" in captured["data"]["prompt"]

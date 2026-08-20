@@ -80,31 +80,55 @@ function percent(value: number, total: number) {
   return Math.round((value / Math.max(1, total)) * 1000) / 10;
 }
 
-function virtualWall(id: string, xPercent: number, yPercent: number, widthPercent: number, heightPercent: number, analysisSize: AnalysisResult["image"]): SelectableWall {
-  const halfWidth = widthPercent / 2;
-  const halfHeight = heightPercent / 2;
-  const x1 = Math.max(0, Math.round((xPercent - halfWidth) / 100 * analysisSize.width));
-  const y1 = Math.max(0, Math.round((yPercent - halfHeight) / 100 * analysisSize.height));
-  const x2 = Math.min(analysisSize.width, Math.round((xPercent + halfWidth) / 100 * analysisSize.width));
-  const y2 = Math.min(analysisSize.height, Math.round((yPercent + halfHeight) / 100 * analysisSize.height));
-  return {
-    id,
-    confidence: 0.5,
-    mask: "",
-    area: Math.max(1, (x2 - x1) * (y2 - y1)),
-    boundingBox: { x1, y1, x2, y2 },
-  };
+function drawMaskRegion(context: CanvasRenderingContext2D, mask: ImageData, selected: boolean, hovered: boolean) {
+  const overlay = context.createImageData(mask.width, mask.height);
+  const fill = selected ? [52, 84, 71] : [255, 255, 255];
+  const alpha = hovered ? 112 : selected ? 82 : 44;
+  for (let offset = 0; offset < mask.data.length; offset += 4) {
+    if (mask.data[offset] <= 10) continue;
+    overlay.data[offset] = fill[0];
+    overlay.data[offset + 1] = fill[1];
+    overlay.data[offset + 2] = fill[2];
+    overlay.data[offset + 3] = alpha;
+  }
+
+  const maskCanvas = document.createElement("canvas");
+  maskCanvas.width = mask.width;
+  maskCanvas.height = mask.height;
+  const maskContext = maskCanvas.getContext("2d")!;
+  maskContext.putImageData(overlay, 0, 0);
+
+  context.save();
+  context.globalAlpha = hovered ? 0.95 : 0.72;
+  context.filter = "drop-shadow(1px 0 0 #ffffff) drop-shadow(-1px 0 0 #ffffff) drop-shadow(0 1px 0 #ffffff) drop-shadow(0 -1px 0 #ffffff)";
+  context.drawImage(maskCanvas, 0, 0);
+  context.filter = "none";
+  context.drawImage(maskCanvas, 0, 0);
+  context.restore();
 }
 
-function exteriorSelectionAreas(analysis: AnalysisResult, projectType: ProjectType): SelectableWall[] {
-  if (projectType !== "exterior" || analysis.walls.length !== 1) return analysis.walls;
-  return [
-    virtualWall("exterior-left-side", 18, 47, 24, 62, analysis.image),
-    virtualWall("exterior-upper-left", 38, 31, 24, 34, analysis.image),
-    virtualWall("exterior-main-center", 52, 45, 30, 62, analysis.image),
-    virtualWall("exterior-right-side", 78, 47, 24, 62, analysis.image),
-    virtualWall("exterior-lower-boundary", 54, 78, 54, 26, analysis.image),
-  ];
+function maskDataUrlForSelection(wallIds: string[], masks: Record<string, ImageData>, width: number, height: number): string | undefined {
+  if (!wallIds.length) return undefined;
+  const combined = new Uint8ClampedArray(width * height * 4);
+  let hasPixels = false;
+  wallIds.forEach(id => {
+    const mask = masks[id];
+    if (!mask || mask.width !== width || mask.height !== height) return;
+    for (let offset = 0; offset < mask.data.length; offset += 4) {
+      if (mask.data[offset] <= 10) continue;
+      combined[offset] = 255;
+      combined[offset + 1] = 255;
+      combined[offset + 2] = 255;
+      combined[offset + 3] = 255;
+      hasPixels = true;
+    }
+  });
+  if (!hasPixels) return undefined;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  canvas.getContext("2d")!.putImageData(new ImageData(combined, width, height), 0, 0);
+  return canvas.toDataURL("image/png").split(",", 2)[1];
 }
 
 export function ImageEditor({ originalSource, originalFile, analysis, projectType, onStartOver }: Props) {
@@ -113,7 +137,7 @@ export function ImageEditor({ originalSource, originalFile, analysis, projectTyp
   const imageRef = useRef<HTMLImageElement | null>(null);
   const masks = useRef<Record<string, ImageData>>({});
   const latestResultBlob = useRef<Blob | null>(null);
-  const selectableWalls = useMemo(() => exteriorSelectionAreas(analysis, projectType), [analysis, projectType]);
+  const selectableWalls = useMemo(() => analysis.walls, [analysis.walls]);
 
   const [ready, setReady] = useState(false);
   const [selectedColor, setSelectedColor] = useState<SelectedPaint | null>(null);
@@ -131,7 +155,6 @@ export function ImageEditor({ originalSource, originalFile, analysis, projectTyp
   const [finalizedLightingValue, setFinalizedLightingValue] = useState(50);
 
   const displaySource = displayMode === "ai-result" && editedSource ? editedSource : originalSource;
-  const usingExteriorGuides = projectType === "exterior" && analysis.walls.length === 1 && selectableWalls.length > 1;
   const areaCount = selectableWalls.length;
   const allAreasSelected = areaCount > 0 && selectedWalls.length === areaCount;
   const visibleMarkers = displayMode === "original";
@@ -150,6 +173,13 @@ export function ImageEditor({ originalSource, originalFile, analysis, projectTyp
     context.drawImage(image, 0, 0);
 
     if (!visibleMarkers) return;
+
+    selectableWalls.forEach(wall => {
+      const selected = selectedWalls.includes(wall.id);
+      const hovered = hoverWall === wall.id;
+      const mask = masks.current[wall.id];
+      if (mask) drawMaskRegion(context, mask, selected, hovered);
+    });
 
     selectableWalls.forEach((wall, index) => {
       const selected = selectedWalls.includes(wall.id);
@@ -183,9 +213,9 @@ export function ImageEditor({ originalSource, originalFile, analysis, projectTyp
     image.onload = async () => {
       if (cancelled) return;
       imageRef.current = image;
-      if (analysis.walls.length) {
+      if (selectableWalls.length) {
         const entries = await Promise.all(
-          analysis.walls
+          selectableWalls
             .filter(wall => wall.mask)
             .map(async wall => [wall.id, await decodeMask(wall.mask, image.naturalWidth, image.naturalHeight)] as const),
         );
@@ -198,7 +228,7 @@ export function ImageEditor({ originalSource, originalFile, analysis, projectTyp
     };
     image.onerror = () => { if (!cancelled) setReady(true); };
     return () => { cancelled = true; };
-  }, [analysis.walls, displaySource]);
+  }, [displaySource, selectableWalls]);
 
   useEffect(() => {
     setSelectedWalls(selectableWalls.map(wall => wall.id));
@@ -226,9 +256,8 @@ export function ImageEditor({ originalSource, originalFile, analysis, projectTyp
       return Math.hypot(point.x - marker.x, point.y - marker.y) <= 26;
     });
     if (markerHit) return markerHit.id;
-    if (usingExteriorGuides) return null;
     const offset = (point.y * canvas.width + point.x) * 4;
-    return analysis.walls.find(wall => masks.current[wall.id]?.data[offset] > 10)?.id ?? null;
+    return selectableWalls.find(wall => masks.current[wall.id]?.data[offset] > 10)?.id ?? null;
   };
 
   const toggleArea = (wallId: string) => {
@@ -302,6 +331,12 @@ export function ImageEditor({ originalSource, originalFile, analysis, projectTyp
           .filter(wall => !selectedAreaIds.includes(wall.id))
           .map(guidancePointFor)
         : undefined;
+      const selectedMask = areaCount > 0 && selectedAreaIds && !allAreasSelected
+        ? maskDataUrlForSelection(selectedAreaIds, masks.current, imageSize.width, imageSize.height)
+        : undefined;
+      const excludedMask = areaCount > 0 && selectedAreaIds && !allAreasSelected
+        ? maskDataUrlForSelection(selectableWalls.filter(wall => !selectedAreaIds.includes(wall.id)).map(wall => wall.id), masks.current, imageSize.width, imageSize.height)
+        : undefined;
       const generatedImage = await visualizeWallColor(originalFile, {
         hex: selectedColor.hex,
         name: selectedColor.name,
@@ -310,6 +345,8 @@ export function ImageEditor({ originalSource, originalFile, analysis, projectTyp
         areaIds: selectedAreaIds,
         targetPoints,
         excludedPoints,
+        selectedMask,
+        excludedMask,
         lightingValue: options.lightingValue,
         lightingLabel: options.lightingLabel,
       });

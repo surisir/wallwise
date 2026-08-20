@@ -26,3 +26,12 @@ def test_large_low_confidence_facade_is_kept_by_geometry() -> None:
     wall[10:90, 10:90] = True
     regions = WallRegionService(minimum_area=1000, confidence_threshold=0.35).extract_walls(wall, confidence=0.2)
     assert len(regions) == 1
+
+
+def test_large_exterior_facade_can_split_into_mask_backed_regions() -> None:
+    wall = np.zeros((100, 160), dtype=bool)
+    wall[10:90, 8:152] = True
+    regions = WallRegionService(minimum_area=1000).extract_walls(wall, split_large_regions=True)
+    assert len(regions) > 1
+    assert all(region.mask for region in regions)
+    assert sum(region.area for region in regions) == int(wall.sum())

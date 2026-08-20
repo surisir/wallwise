@@ -22,6 +22,8 @@ class SelectedColor(NamedTuple):
     hex: str
     name: str | None
     scene_hint: str | None = None
+    selected_mask: bytes | None = None
+    excluded_mask: bytes | None = None
 
     @property
     def rgb(self) -> tuple[int, int, int]:
@@ -265,9 +267,22 @@ class GeminiProvider:
 def build_cloudflare_wall_color_prompt(color: SelectedColor) -> str:
     red, green, blue = color.rgb
     fallback = f"\n\nAI FALLBACK INSTRUCTION:\n{color.scene_hint}" if color.scene_hint else ""
+    mask_instruction = ""
+    if color.selected_mask:
+        mask_instruction = """
+
+MASK GUIDANCE:
+Image 1 is a black-and-white selection mask aligned to image 0.
+Repaint ONLY the white area of image 1.
+Every black area in image 1 must remain unchanged, even if it is also a wall or facade.
+Do not draw the mask, edges, labels, numbers, or any guide marks in the final result."""
+        if color.excluded_mask:
+            mask_instruction += """
+Image 2 is an additional excluded-area mask. Any white area in image 2 must remain its original color."""
     return f"""Edit the supplied photograph.
 
 This is image 0.
+{mask_instruction}
 
 Change ONLY the visible paintable wall surfaces in image 0 to:
 
@@ -324,6 +339,16 @@ class CloudflareFluxProvider:
             image.save(reference, format="PNG", optimize=True)
             return reference.getvalue(), image.width, image.height
 
+    @staticmethod
+    def _make_mask_reference(mask: bytes, size: tuple[int, int]) -> bytes:
+        from PIL import Image
+
+        with Image.open(BytesIO(mask)) as source:
+            alpha = source.convert("L").resize(size, Image.Resampling.NEAREST)
+            reference = BytesIO()
+            alpha.save(reference, format="PNG", optimize=True)
+            return reference.getvalue()
+
     @classmethod
     def _output_size(cls, original: bytes) -> tuple[int, int]:
         from PIL import Image
@@ -362,17 +387,24 @@ class CloudflareFluxProvider:
         try:
             reference, input_width, input_height = self._make_reference_image(original)
             output_width, output_height = self._output_size(original)
+            selected_mask = self._make_mask_reference(color.selected_mask, (input_width, input_height)) if color.selected_mask else None
+            excluded_mask = self._make_mask_reference(color.excluded_mask, (input_width, input_height)) if color.excluded_mask else None
         except Exception as exc:
             raise HTTPException(422, "The uploaded room image could not be prepared for Cloudflare editing.") from exc
 
         endpoint = f"https://api.cloudflare.com/client/v4/accounts/{self.account_id}/ai/run/{self.model}"
         started_at = time.perf_counter()
         try:
+            files = {"input_image_0": ("room-reference.png", reference, "image/png")}
+            if selected_mask:
+                files["input_image_1"] = ("selected-wall-mask.png", selected_mask, "image/png")
+            if excluded_mask:
+                files["input_image_2"] = ("excluded-wall-mask.png", excluded_mask, "image/png")
             response = httpx.post(
                 endpoint,
                 headers={"Authorization": f"Bearer {self.api_token}"},
                 data={"prompt": build_cloudflare_wall_color_prompt(color), "width": str(output_width), "height": str(output_height)},
-                files={"input_image_0": ("room-reference.png", reference, "image/png")},
+                files=files,
                 timeout=self.timeout_seconds,
             )
             response.raise_for_status()

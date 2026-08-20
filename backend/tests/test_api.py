@@ -1,3 +1,4 @@
+import base64
 from io import BytesIO
 from fastapi.testclient import TestClient
 from PIL import Image
@@ -93,6 +94,42 @@ def test_visualize_sends_selected_and_deselected_exterior_guidance(monkeypatch) 
                 "selected_area_ids": '["wall-1"]',
                 "target_points": '[{"id":"wall-1","x":20,"y":30,"xPercent":25,"yPercent":37.5}]',
                 "excluded_points": '[{"id":"wall-2","x":60,"y":30,"xPercent":75,"yPercent":37.5}]',
+            },
+        )
+
+    assert response.status_code == 200
+
+
+def test_visualize_passes_selected_mask_to_provider(monkeypatch) -> None:
+    import app.api.routes as routes
+
+    mask = BytesIO()
+    Image.new("L", (80, 80), 255).save(mask, "PNG")
+    encoded_mask = base64.b64encode(mask.getvalue()).decode("ascii")
+
+    class Provider:
+        def edit_wall_color(self, original, filename, content_type, color):
+            assert color.selected_mask == mask.getvalue()
+            assert "Image 1 is a black-and-white selection mask" in color.scene_hint
+            buffer = BytesIO()
+            Image.new("RGB", (16, 16), "red").save(buffer, "PNG")
+            return ImageEditResult(buffer.getvalue(), "image/png", 16, 16, 25, "test")
+
+    monkeypatch.setattr(routes, "create_image_editing_provider", lambda settings: Provider())
+
+    source = BytesIO()
+    Image.new("RGB", (80, 80)).save(source, "PNG")
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/visualize",
+            files={"image": ("room.png", source.getvalue(), "image/png")},
+            data={
+                "color_hex": "#AA0000",
+                "color_rgb": "170,0,0",
+                "selected_area_ids": '["wall-1"]',
+                "target_points": '[{"id":"wall-1","x":20,"y":30,"xPercent":25,"yPercent":37.5}]',
+                "selected_mask": encoded_mask,
             },
         )
 
