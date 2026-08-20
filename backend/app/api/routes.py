@@ -1,6 +1,4 @@
 import asyncio
-import base64
-import binascii
 import json
 import logging
 import re
@@ -140,19 +138,6 @@ def _format_guidance_points(points: list[dict]) -> str:
             f"{percent_hint}"
         )
     return "; ".join(formatted)
-
-
-def _decode_mask_png(raw: str | None, field_name: str) -> bytes | None:
-    if not raw:
-        return None
-    encoded = raw.split(",", 1)[-1] if raw.startswith("data:") else raw
-    try:
-        decoded = base64.b64decode(encoded, validate=True)
-    except (binascii.Error, ValueError) as exc:
-        raise HTTPException(status_code=422, detail=f"{field_name} must be a base64 PNG mask.") from exc
-    if not decoded.startswith(b"\x89PNG\r\n\x1a\n"):
-        raise HTTPException(status_code=422, detail=f"{field_name} must be a PNG mask.")
-    return decoded
 
 
 def _fallback_room_masks(image) -> tuple[dict[str, np.ndarray], float]:
@@ -343,7 +328,6 @@ async def analyze(
             uploaded.image.height,
         )
         masks, confidence = _fallback_room_masks(uploaded.image)
-        _segmentation.last_debug = {"scene_type": "fallback"}
 
     except Exception as exc:
         logger.exception(
@@ -413,11 +397,9 @@ async def analyze(
             "ANALYZE: extracting wall regions"
         )
 
-        split_large_regions = getattr(_segmentation, "last_debug", {}).get("scene_type") == "exterior"
         walls = wall_service.extract_walls(
             masks["wall"],
             confidence,
-            split_large_regions=split_large_regions,
         )
 
         surfaces = wall_service.surfaces(
@@ -482,8 +464,6 @@ async def visualize_wall_color(
     selected_area_ids: str | None = Form(None),
     target_points: str | None = Form(None),
     excluded_points: str | None = Form(None),
-    selected_mask: str | None = Form(None),
-    excluded_mask: str | None = Form(None),
     project_type: str | None = Form(None),
     lighting_value: int | None = Form(None),
     lighting_label: str | None = Form(None),
@@ -551,8 +531,6 @@ async def visualize_wall_color(
 
     selected_points = _parse_guidance_points(target_points, "Target points")
     deselected_points = _parse_guidance_points(excluded_points, "Excluded points")
-    selected_mask_png = _decode_mask_png(selected_mask, "Selected mask")
-    excluded_mask_png = _decode_mask_png(excluded_mask, "Excluded mask")
 
     # ---------------------------------------------------------
     # 3. Validate uploaded image
@@ -606,18 +584,6 @@ async def visualize_wall_color(
             "less rather than more: keep the repaint local to the selected "
             "wall plane and leave adjacent or surrounding surfaces unchanged."
         )
-        if selected_mask_png:
-            edit_instruction = (
-                f"{edit_instruction} Image 1 is a black-and-white selection mask: "
-                "white pixels mark the exact wall/facade area selected by the user, "
-                "and black pixels mark areas that must not be repainted. Follow image 1 "
-                "as the strongest location guidance."
-            )
-        if excluded_mask_png:
-            edit_instruction = (
-                f"{edit_instruction} The optional excluded mask marks wall/facade areas "
-                "that should explicitly remain their original color."
-            )
         if project_type == "exterior":
             edit_instruction = (
                 f"{edit_instruction} For exterior photos, do not repaint "
@@ -646,8 +612,6 @@ async def visualize_wall_color(
         color_hex.upper(),
         color_name,
         edit_instruction,
-        selected_mask_png,
-        excluded_mask_png,
     )
 
     # ---------------------------------------------------------
