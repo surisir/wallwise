@@ -20,8 +20,6 @@ class Settings(BaseSettings):
     cloudflare_account_id: str | None = None
     cloudflare_ai_token: str | None = None
     cloudflare_image_model: str = "@cf/black-forest-labs/flux-2-klein-4b"
-    openai_api_key: str | None = None
-    openai_image_model: str = "gpt-image-2"
     fal_key: str | None = None
     fal_qwen_model: str = "fal-ai/qwen-image-edit-2511"
     fal_download_timeout_seconds: int = 90

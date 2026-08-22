@@ -1,5 +1,4 @@
 import asyncio
-import base64
 import json
 import logging
 import re
@@ -139,27 +138,6 @@ def _format_guidance_points(points: list[dict]) -> str:
             f"{percent_hint}"
         )
     return "; ".join(formatted)
-
-
-def _decode_selected_mask(raw: str | None) -> bytes | None:
-    if not raw:
-        return None
-    encoded = raw.strip()
-    if encoded.startswith("data:"):
-        encoded = encoded.split(",", 1)[-1]
-    try:
-        decoded = base64.b64decode(encoded, validate=True)
-    except Exception as exc:
-        raise HTTPException(
-            status_code=422,
-            detail="Selected wall mask must be a valid base64 PNG.",
-        ) from exc
-    if not decoded.startswith(b"\x89PNG\r\n\x1a\n"):
-        raise HTTPException(
-            status_code=422,
-            detail="Selected wall mask must be a PNG image.",
-        )
-    return decoded
 
 
 def _fallback_room_masks(image) -> tuple[dict[str, np.ndarray], float]:
@@ -486,7 +464,6 @@ async def visualize_wall_color(
     selected_area_ids: str | None = Form(None),
     target_points: str | None = Form(None),
     excluded_points: str | None = Form(None),
-    selected_mask: str | None = Form(None),
     project_type: str | None = Form(None),
     lighting_value: int | None = Form(None),
     lighting_label: str | None = Form(None),
@@ -554,7 +531,6 @@ async def visualize_wall_color(
 
     selected_points = _parse_guidance_points(target_points, "Target points")
     deselected_points = _parse_guidance_points(excluded_points, "Excluded points")
-    selected_mask_png = _decode_selected_mask(selected_mask)
 
     # ---------------------------------------------------------
     # 3. Validate uploaded image
@@ -608,13 +584,6 @@ async def visualize_wall_color(
             "less rather than more: keep the repaint local to the selected "
             "wall plane and leave adjacent or surrounding surfaces unchanged."
         )
-        if selected_mask_png:
-            edit_instruction = (
-                f"{edit_instruction} A selected-wall mask is also supplied. "
-                "Use the mask as the strongest guidance: repaint only the "
-                "selected paintable wall pixels indicated by the mask and "
-                "leave all unmasked/non-selected areas unchanged."
-            )
         if project_type == "exterior":
             edit_instruction = (
                 f"{edit_instruction} For exterior photos, do not repaint "
@@ -643,7 +612,6 @@ async def visualize_wall_color(
         color_hex.upper(),
         color_name,
         edit_instruction,
-        selected_mask_png,
     )
 
     # ---------------------------------------------------------
