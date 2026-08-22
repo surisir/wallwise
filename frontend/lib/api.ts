@@ -21,7 +21,7 @@ type GuidancePoint = {
   yPercent?: number;
 };
 
-export async function visualizeWallColor(file: File, color: { hex: string; name?: string; aiOnly?: boolean; areaIds?: string[]; targetPoints?: GuidancePoint[]; excludedPoints?: GuidancePoint[]; projectType?: "interior" | "exterior"; lightingValue?: number; lightingLabel?: string }): Promise<Blob> {
+export async function visualizeWallColor(file: File, color: { hex: string; name?: string; aiOnly?: boolean; areaIds?: string[]; targetPoints?: GuidancePoint[]; excludedPoints?: GuidancePoint[]; selectedMask?: string; projectType?: "interior" | "exterior"; lightingValue?: number; lightingLabel?: string }): Promise<Blob> {
   const form = new FormData();
   form.append("image", file);
   form.append("color_hex", color.hex);
@@ -34,6 +34,7 @@ export async function visualizeWallColor(file: File, color: { hex: string; name?
   if (color.areaIds?.length) form.append("selected_area_ids", JSON.stringify(color.areaIds));
   if (color.targetPoints?.length) form.append("target_points", JSON.stringify(color.targetPoints));
   if (color.excludedPoints?.length) form.append("excluded_points", JSON.stringify(color.excludedPoints));
+  if (color.selectedMask) form.append("selected_mask", color.selectedMask);
   const response = await fetch(`${API_URL}/visualize`, { method: "POST", body: form });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));

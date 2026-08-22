@@ -30,6 +30,16 @@ CLOUDFLARE_AI_TOKEN=your_workers_ai_token
 CLOUDFLARE_IMAGE_MODEL=@cf/black-forest-labs/flux-2-klein-4b
 ```
 
+Optional OpenAI test provider:
+
+```dotenv
+IMAGE_PROVIDER=openai-image
+OPENAI_API_KEY=your_server_side_openai_key
+OPENAI_IMAGE_MODEL=gpt-image-2
+```
+
+Switch back to FLUX any time by setting `IMAGE_PROVIDER=cloudflare-flux`.
+
 After Railway deploys, test:
 
 ```text

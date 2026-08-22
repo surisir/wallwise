@@ -28,6 +28,36 @@ async function decodeMask(mask: string, width: number, height: number): Promise<
   return context.getImageData(0, 0, width, height);
 }
 
+function selectedMaskDataUrl(selectedIds: string[], decodedMasks: Record<string, ImageData>, width: number, height: number): string | undefined {
+  const selected = selectedIds
+    .map(id => decodedMasks[id])
+    .filter((mask): mask is ImageData => Boolean(mask));
+  if (!selected.length) return undefined;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d", { willReadFrequently: true })!;
+  const output = context.createImageData(width, height);
+  let selectedPixelCount = 0;
+
+  selected.forEach(mask => {
+    const maxLength = Math.min(mask.data.length, output.data.length);
+    for (let index = 0; index < maxLength; index += 4) {
+      if (Math.max(mask.data[index], mask.data[index + 1], mask.data[index + 2]) <= 10) continue;
+      output.data[index] = 255;
+      output.data[index + 1] = 255;
+      output.data[index + 2] = 255;
+      output.data[index + 3] = 255;
+      selectedPixelCount += 1;
+    }
+  });
+
+  if (!selectedPixelCount) return undefined;
+  context.putImageData(output, 0, 0);
+  return canvas.toDataURL("image/png");
+}
+
 function markerFor(wall: AnalysisResult["walls"][number], analysisSize: AnalysisResult["image"], targetSize = analysisSize): Point {
   const scaleX = targetSize.width / Math.max(1, analysisSize.width);
   const scaleY = targetSize.height / Math.max(1, analysisSize.height);
@@ -302,6 +332,9 @@ export function ImageEditor({ originalSource, originalFile, analysis, projectTyp
           .filter(wall => !selectedAreaIds.includes(wall.id))
           .map(guidancePointFor)
         : undefined;
+      const selectedMask = areaCount > 0 && selectedAreaIds && !allAreasSelected
+        ? selectedMaskDataUrl(selectedAreaIds, masks.current, imageSize.width, imageSize.height)
+        : undefined;
       const generatedImage = await visualizeWallColor(originalFile, {
         hex: selectedColor.hex,
         name: selectedColor.name,
@@ -310,6 +343,7 @@ export function ImageEditor({ originalSource, originalFile, analysis, projectTyp
         areaIds: selectedAreaIds,
         targetPoints,
         excludedPoints,
+        selectedMask,
         lightingValue: options.lightingValue,
         lightingLabel: options.lightingLabel,
       });

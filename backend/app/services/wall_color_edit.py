@@ -22,6 +22,7 @@ class SelectedColor(NamedTuple):
     hex: str
     name: str | None
     scene_hint: str | None = None
+    selected_mask: bytes | None = None
 
     @property
     def rgb(self) -> tuple[int, int, int]:
@@ -82,6 +83,20 @@ legs, wall art, headboards and trim. Preserve realistic wall texture and illumin
 areas remain bright and shadowed areas remain dark while still reading as {color.hex} paint.
 
 Return only the same photograph after a believable, accurate wall repaint.{fallback}"""
+
+
+def build_openai_wall_color_prompt(color: SelectedColor) -> str:
+    mask_instruction = ""
+    if color.selected_mask:
+        mask_instruction = """
+
+MASK GUIDANCE:
+An edit mask is supplied. Transparent mask pixels mark the ONLY selected wall area
+that may be recolored. Opaque mask pixels must remain visually unchanged.
+Do not repaint outside the transparent mask area, even if another wall is visible.
+If the selected mask touches objects, trim, windows, ceiling, or floor, preserve
+those non-wall details and edit only paintable wall pixels inside the mask."""
+    return f"{build_wall_color_prompt(color)}{mask_instruction}"
 
 
 @dataclass(frozen=True)
@@ -262,6 +277,128 @@ class GeminiProvider:
         return ImageEditResult(generated, detected_content_type, width, height, round((time.perf_counter() - started_at) * 1000), self.provider_name)
 
 
+class OpenAIImageProvider:
+    """OpenAI GPT Image Edit provider for server-side wall repaint testing."""
+
+    provider_name = "openai-image"
+
+    def __init__(self, api_key: str | None, model: str, timeout_seconds: int) -> None:
+        self.api_key = api_key.strip() if api_key else None
+        self.model = model
+        self.timeout_seconds = timeout_seconds
+
+    @staticmethod
+    def _png_image(original: bytes) -> tuple[bytes, int, int]:
+        from PIL import Image, ImageOps
+
+        with Image.open(BytesIO(original)) as source:
+            image = ImageOps.exif_transpose(source).convert("RGB")
+            output = BytesIO()
+            image.save(output, format="PNG", optimize=True)
+            return output.getvalue(), image.width, image.height
+
+    @staticmethod
+    def _openai_mask(selected_mask: bytes, width: int, height: int) -> bytes:
+        from PIL import Image
+
+        with Image.open(BytesIO(selected_mask)) as source:
+            guide = source.convert("RGBA")
+            if guide.size != (width, height):
+                guide = guide.resize((width, height), Image.Resampling.NEAREST)
+            guide_pixels = guide.load()
+            mask = Image.new("RGBA", (width, height), (0, 0, 0, 255))
+            mask_pixels = mask.load()
+            for y in range(height):
+                for x in range(width):
+                    red, green, blue, alpha = guide_pixels[x, y]
+                    selected = alpha > 0 and max(red, green, blue) > 10
+                    if selected:
+                        # OpenAI image edit masks use transparency for the editable area.
+                        mask_pixels[x, y] = (0, 0, 0, 0)
+            output = BytesIO()
+            mask.save(output, format="PNG", optimize=True)
+            return output.getvalue()
+
+    @staticmethod
+    def _extract_image_item(body: dict) -> dict | None:
+        data = body.get("data")
+        if isinstance(data, list) and data:
+            item = data[0]
+            if isinstance(item, dict):
+                return item
+        return None
+
+    def edit_wall_color(self, original: bytes, filename: str, content_type: str, color: SelectedColor) -> ImageEditResult:
+        if not self.api_key:
+            raise HTTPException(503, "OpenAI image editing is not configured. Set OPENAI_API_KEY on the backend server.")
+        try:
+            input_png, width, height = self._png_image(original)
+            files: dict[str, tuple[str, bytes, str]] = {
+                "image": ("wallwise-input.png", input_png, "image/png"),
+            }
+            if color.selected_mask:
+                files["mask"] = ("wallwise-selected-mask.png", self._openai_mask(color.selected_mask, width, height), "image/png")
+        except Exception as exc:
+            raise HTTPException(422, "The uploaded image or selected wall mask could not be prepared for OpenAI editing.") from exc
+
+        started_at = time.perf_counter()
+        try:
+            response = httpx.post(
+                "https://api.openai.com/v1/images/edits",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                data={
+                    "model": self.model,
+                    "prompt": build_openai_wall_color_prompt(color),
+                    "n": "1",
+                    "size": "auto",
+                    "output_format": "png",
+                },
+                files=files,
+                timeout=self.timeout_seconds,
+            )
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            safe_body = exc.response.text.replace(self.api_key, "[REDACTED]")
+            logger.error("OpenAI image edit failed http_status=%s response_body=%s", exc.response.status_code, safe_body)
+            raise HTTPException(502, f"OpenAI image edit failed (HTTP {exc.response.status_code}): {safe_body}") from exc
+        except httpx.HTTPError as exc:
+            logger.error("OpenAI image edit failed before receiving a response: %s", exc)
+            raise HTTPException(503, "OpenAI image editing is temporarily unavailable.") from exc
+
+        try:
+            body = response.json()
+            item = self._extract_image_item(body)
+            if not item:
+                raise ValueError(json.dumps(body))
+            encoded = item.get("b64_json")
+            if isinstance(encoded, str):
+                generated = base64.b64decode(encoded)
+            elif isinstance(item.get("url"), str):
+                downloaded = httpx.get(item["url"], timeout=self.timeout_seconds)
+                downloaded.raise_for_status()
+                generated = downloaded.content
+            else:
+                raise ValueError(json.dumps(body))
+            from PIL import Image
+
+            with Image.open(BytesIO(generated)) as image:
+                result_width, result_height = image.size
+                result_content_type = Image.MIME.get(image.format, "image/png")
+        except Exception as exc:
+            safe_detail = str(exc).replace(self.api_key, "[REDACTED]")
+            logger.error("OpenAI image edit returned an unusable image response: %s", safe_detail)
+            raise HTTPException(502, f"OpenAI image edit returned an unusable image response: {safe_detail}") from exc
+
+        return ImageEditResult(
+            generated,
+            result_content_type,
+            result_width,
+            result_height,
+            round((time.perf_counter() - started_at) * 1000),
+            self.provider_name,
+        )
+
+
 def build_cloudflare_wall_color_prompt(color: SelectedColor) -> str:
     red, green, blue = color.rgb
     fallback = f"\n\nAI FALLBACK INSTRUCTION:\n{color.scene_hint}" if color.scene_hint else ""
@@ -406,6 +543,8 @@ def create_image_editing_provider(settings: Settings) -> ImageEditingProvider:
         return GeminiProvider(settings.gemini_api_key, settings.gemini_image_model, settings.fal_download_timeout_seconds)
     if provider == "cloudflare-flux":
         return CloudflareFluxProvider(settings.cloudflare_account_id, settings.cloudflare_ai_token, settings.cloudflare_image_model, settings.fal_download_timeout_seconds)
+    if provider == "openai-image":
+        return OpenAIImageProvider(settings.openai_api_key, settings.openai_image_model, settings.fal_download_timeout_seconds)
     if provider == "qwen-fal":
         return FalQwenProvider(settings.fal_key, settings.fal_qwen_model, settings.fal_download_timeout_seconds)
-    raise HTTPException(500, f"Unsupported IMAGE_PROVIDER: {settings.image_provider}. Use cloudflare-flux, gemini, or qwen-fal.")
+    raise HTTPException(500, f"Unsupported IMAGE_PROVIDER: {settings.image_provider}. Use cloudflare-flux, openai-image, gemini, or qwen-fal.")

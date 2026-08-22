@@ -49,7 +49,7 @@ Open [http://localhost:3000](http://localhost:3000). The frontend uses `NEXT_PUB
 
 `POST /analyze` accepts `multipart/form-data` with an `image` field. JPG, JPEG, PNG, and WEBP are accepted up to 10 MB. It returns image dimensions, YOLO object boxes, individual wall masks, and available floor/ceiling/window/door masks. An invalid file returns a useful 4xx response; model or download failure returns a 503 without exposing server details.
 
-`POST /visualize` accepts the original image plus `color_hex` and optional `color_name` as multipart fields. It sends the original upload and edit prompt to Google AI Studio's Gemini image API from the backend, then streams Gemini's returned image bytes back to the browser. It does not use a browser canvas, CSS tint, or pixel-overlay recoloring as the final visualization.
+`POST /visualize` accepts the original image plus `color_hex`, optional `color_name`, selected wall guidance, and optional selected-wall mask guidance as multipart fields. It sends the original upload and strict repaint prompt to the configured server-side image provider, then streams the provider's returned image bytes back to the browser. It does not use a browser canvas, CSS tint, or pixel-overlay recoloring as the final visualization.
 
 Local development CORS is explicitly limited by `ALLOWED_ORIGINS` (default `http://localhost:3000`); set it to the deployed frontend origin in production.
 
@@ -59,9 +59,26 @@ The application lazily initializes models on the first `/analyze` request and re
 
 If a first analysis fails, verify internet access, PyTorch installation, host memory, and the model names in `backend/.env`. Keep `ENABLE_OBJECT_DETECTION=false` to keep the core wall workflow running while diagnosing YOLO.
 
-## Gemini image-editing setup
+## Image-editing provider setup
 
-Copy `backend/.env.example` to `backend/.env` and set the server-only key:
+Copy `backend/.env.example` to `backend/.env` and set one server-only provider. Production currently uses Cloudflare FLUX:
+
+```dotenv
+IMAGE_PROVIDER=cloudflare-flux
+CLOUDFLARE_ACCOUNT_ID=your_cloudflare_account_id
+CLOUDFLARE_AI_TOKEN=your_workers_ai_token
+CLOUDFLARE_IMAGE_MODEL=@cf/black-forest-labs/flux-2-klein-4b
+```
+
+OpenAI GPT Image Edit can be tested without removing FLUX:
+
+```dotenv
+IMAGE_PROVIDER=openai-image
+OPENAI_API_KEY=your_server_side_openai_key
+OPENAI_IMAGE_MODEL=gpt-image-2
+```
+
+Gemini can also be selected when configured:
 
 ```dotenv
 IMAGE_PROVIDER=gemini
@@ -69,11 +86,11 @@ GEMINI_API_KEY=your_server_side_google_ai_studio_key
 GEMINI_IMAGE_MODEL=gemini-3.1-flash-image
 ```
 
-Never place this key in `frontend/.env.local` or any `NEXT_PUBLIC_*` variable. After restarting the backend, upload a room, choose a color, open **Color**, and choose **Visualize with AI**. The original upload—not a canvas preview—is sent to the backend, and Gemini's returned image appears in the existing before/after control. The response includes `X-Image-Provider`, `X-Generation-Time-Ms`, `X-Image-Width`, and `X-Image-Height` headers for diagnostics.
+Never place provider keys in `frontend/.env.local` or any `NEXT_PUBLIC_*` variable. After restarting the backend, upload a photo, choose a color, and click **Apply**. The original upload—not a canvas preview—is sent to the backend, and the provider's returned image appears in the existing before/after control. The response includes `X-Image-Provider`, `X-Generation-Time-Ms`, `X-Image-Width`, and `X-Image-Height` headers for diagnostics.
 
 ## Wall-analysis workflow
 
-The local segmentation is retained for wall selection and editing guidance. The actual visualized image is always the remote Qwen edit returned by fal. The dynamic server-side prompt includes the selected color name, HEX, and RGB along with strict preservation rules for furniture, windows, trim, ceiling, flooring, plants, artwork, lighting, shadows, perspective, composition, and room architecture.
+The local segmentation is retained for wall selection and editing guidance. The actual visualized image is always the remote provider output selected by `IMAGE_PROVIDER`. The dynamic server-side prompt includes the selected color name, HEX, RGB, wall-selection guidance, optional mask guidance, and strict preservation rules for furniture, windows, trim, ceiling, flooring, plants, artwork, lighting, shadows, perspective, composition, and architecture.
 
 The editor also supports wall hover/click selection, color swatches and custom hex colors, optional YOLO boxes, before/after, undo (last 20 changes), reset wall, and reset all. Coordinates are translated from the responsive CSS canvas back to natural image pixels before mask lookup.
 
